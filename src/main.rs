@@ -10,8 +10,12 @@ use vga::Writer;
 pub extern "C" fn _start() -> ! {
     println!("Hello, world!");
 
-    pog_os::init_interrupt_handlers();
-    x86_64::instructions::interrupts::int3();
+    pog_os::init();
+    fn stack_overflow() {
+        stack_overflow();
+    }
+
+    stack_overflow();
 
     println!("Didn't crash pog");
 
