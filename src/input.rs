@@ -3,37 +3,36 @@
 
 use crate::interrupts::{InterruptIndex, PICS};
 use crate::print;
+use crate::vga::WRITER;
+use alloc::{string::String, vec::Vec};
 use lazy_static::lazy_static;
 use pc_keyboard::{layouts, DecodedKey, HandleControl, KeyCode, Keyboard, ScancodeSet1};
 use spin::Mutex;
-use x86_64::instructions::port::Port;
+use x86_64::instructions::{interrupts, port::Port};
 use x86_64::structures::idt::InterruptStackFrame;
 
 pub struct Stdin {
-    chars: Mutex<[char; 64]>,
-    location: Mutex<usize>,
+    chars: Mutex<Vec<char>>,
 }
 
 impl Stdin {
     pub fn clear(&self) {
         let mut chars = self.chars.lock();
-        let mut loc = self.location.lock();
-        *chars = ['\0'; 64];
-        *loc = 0_usize;
+        *chars = Vec::new();
     }
 
     pub fn get_char(&self) -> char {
-        let loc = self.location.lock();
-        let last_loc = *loc;
-        drop(loc);
+        let chars = self.chars.lock();
+        let chars_len = chars.len();
+        drop(chars);
 
         loop {
-            let loc = self.location.lock();
-            let new_loc = *loc;
+            let chars = self.chars.lock();
+            let new_len = chars.len();
 
-            drop(loc);
+            drop(chars);
 
-            if new_loc != last_loc {
+            if new_len != chars_len {
                 break;
             }
             crate::idle();
@@ -41,29 +40,29 @@ impl Stdin {
 
         let chars = self.chars.lock();
 
-        chars[last_loc]
+        chars[chars.len() - 1]
     }
 
-    /* TODO
-    pub fn get_str(&self) -> [char; 64] {
-        let mut new_char_arr: [char; 64] = ['\0'; 64];
-        let mut new_char = '\0';
-        let mut index: usize = 0;
+    pub fn get_str(&self) -> String {
+        let mut result = String::new();
+        let mut new_char = self.get_char();
 
-        while index < 64 && new_char != '\n' {
+        while new_char != '\n' {
+            if new_char == '\x08' {
+                result.pop();
+            } else {
+                result.push(new_char);
+            }
             new_char = self.get_char();
-            new_char_arr[index] = new_char;
-            index += 1;
         }
 
-        new_char_arr
-    }*/
+        result
+    }
 }
 
 lazy_static! {
     pub static ref STDIN: Stdin = Stdin {
-        chars: Mutex::new(['\0'; 64]),
-        location: Mutex::new(0_usize)
+        chars: Mutex::new(Vec::new()),
     };
 }
 
@@ -96,11 +95,24 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Inte
 
 fn handle_raw_char_input(character: char) {
     let mut chars = STDIN.chars.lock();
-    let mut loc = STDIN.location.lock();
-    chars[*loc] = character;
-    *loc += 1;
+
+    if character.is_alphanumeric() || character == '\n' {
+        chars.push(character);
+        print!("{}", character);
+    } else {
+        // NON PRINTABLE CHARACTER HANDLING
+
+        if character == '\x08' {
+            // Handle backspace
+            chars.push(character);
+            interrupts::without_interrupts(|| {
+                let mut writer = WRITER.lock();
+                writer.overwrite_char(0x20);
+            });
+        }
+    }
 }
 
-fn handle_raw_key_input(key: KeyCode) {
-    print!("{:?}", key);
+fn handle_raw_key_input(_key: KeyCode) {
+    /* TODO */
 }

@@ -2,27 +2,24 @@
 #![no_main]
 
 extern crate alloc;
-use alloc::vec::Vec;
 use bootloader::{entry_point, BootInfo};
-use pog_os::{allocator, mem, println};
+use pog_os::{allocator, input::STDIN, mem, print, println};
 use x86_64::VirtAddr;
 
 entry_point!(kernel_main);
 
 fn kernel_main(boot_info: &'static BootInfo) -> ! {
+    // === BEGIN INIT SECTION ===
     pog_os::init();
-
     let physical_memory_offset = VirtAddr::new(boot_info.physical_memory_offset);
     let mut mapper = unsafe { mem::init(physical_memory_offset) };
     let mut frame_allocator = unsafe { mem::BootInfoFrameAllocator::new(&boot_info.memory_map) };
-
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap init failed");
+    // === END INIT SECTION ===
 
-    let mut x = Vec::new();
-    x.push(69);
-    x.push(420);
-
-    println!("vec: {:?}", x);
+    print!("What's your name? : ");
+    let name = STDIN.get_str();
+    println!("Hello, {}!", name);
 
     pog_os::idle_loop();
 }

@@ -54,7 +54,7 @@ struct Buffer {
 }
 
 pub struct Writer {
-    column_position: usize,
+    pub column_position: usize,
     colour_code: ColourCode,
     buffer: &'static mut Buffer,
 }
@@ -87,6 +87,12 @@ impl Writer {
                 self.column_position += 1;
             }
         }
+    }
+
+    pub fn overwrite_char(&mut self, byte: u8) {
+        self.column_position -= 1;
+        self.write_char(byte);
+        self.column_position -= 1;
     }
 
     pub fn write_string(&mut self, s: &str) {
