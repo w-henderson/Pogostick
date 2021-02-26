@@ -1,10 +1,11 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
 
-pub mod gdt;
-pub mod input;
-pub mod interrupts;
-pub mod vga;
+pub mod gdt; // stack allocation for interrupts
+pub mod input; // input handling
+pub mod interrupts; // interrupt and exception handling
+pub mod mem; // heap allocation
+pub mod vga; // console output
 
 /// Initialises interrupt handling
 pub fn init() {

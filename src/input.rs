@@ -40,12 +40,28 @@ impl Stdin {
         }
 
         let chars = self.chars.lock();
-        return chars[last_loc];
+
+        chars[last_loc]
     }
+
+    /* TODO
+    pub fn get_str(&self) -> [char; 64] {
+        let mut new_char_arr: [char; 64] = ['\0'; 64];
+        let mut new_char = '\0';
+        let mut index: usize = 0;
+
+        while index < 64 && new_char != '\n' {
+            new_char = self.get_char();
+            new_char_arr[index] = new_char;
+            index += 1;
+        }
+
+        new_char_arr
+    }*/
 }
 
 lazy_static! {
-    pub static ref stdin: Stdin = Stdin {
+    pub static ref STDIN: Stdin = Stdin {
         chars: Mutex::new(['\0'; 64]),
         location: Mutex::new(0_usize)
     };
@@ -79,8 +95,8 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Inte
 }
 
 fn handle_raw_char_input(character: char) {
-    let mut chars = stdin.chars.lock();
-    let mut loc = stdin.location.lock();
+    let mut chars = STDIN.chars.lock();
+    let mut loc = STDIN.location.lock();
     chars[*loc] = character;
     *loc += 1;
 }

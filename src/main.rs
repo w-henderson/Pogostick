@@ -1,21 +1,23 @@
 #![no_std]
 #![no_main]
 
-mod vga;
+use bootloader::{entry_point, BootInfo};
+use pog_os::input::STDIN;
+use pog_os::mem;
+use pog_os::println;
+use x86_64::{
+    structures::paging::{Page, Translate},
+    VirtAddr,
+};
 
-use pog_os::input::stdin;
-use pog_os::interrupts::init_idt;
-use vga::Writer;
+entry_point!(kernel_main);
 
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
+fn kernel_main(boot_info: &'static BootInfo) -> ! {
     pog_os::init();
 
-    println!("Hello, world!");
-
-    let new_char = stdin.get_char();
-
-    println!("Char: {}", new_char);
+    let physical_memory_offset = VirtAddr::new(boot_info.physical_memory_offset);
+    let mut mapper = unsafe { mem::init(physical_memory_offset) };
+    let mut frame_allocator = unsafe { mem::BootInfoFrameAllocator::new(&boot_info.memory_map) };
 
     pog_os::idle_loop();
 }
