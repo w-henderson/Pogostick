@@ -14,14 +14,15 @@ pub const PIC_2_OFFSET: u8 = 40;
 #[repr(u8)]
 pub enum InterruptIndex {
     Timer = PIC_1_OFFSET,
+    Keyboard,
 }
 
 impl InterruptIndex {
-    fn as_u8(self) -> u8 {
+    pub fn as_u8(self) -> u8 {
         self as u8
     }
 
-    fn as_usize(self) -> usize {
+    pub fn as_usize(self) -> usize {
         usize::from(self.as_u8())
     }
 }
@@ -41,6 +42,8 @@ lazy_static! {
         }
 
         idt[InterruptIndex::Timer.as_usize()].set_handler_fn(timer_interrupt_handler);
+        idt[InterruptIndex::Keyboard.as_usize()]
+            .set_handler_fn(crate::keyboard::keyboard_interrupt_handler);
 
         idt
     };
@@ -57,7 +60,7 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFra
 
 /// Double exception handler, basically a crash but not quite
 extern "x86-interrupt" fn double_fault_handler(
-    stack_frame: &mut InterruptStackFrame,
+    _stack_frame: &mut InterruptStackFrame,
     _error_code: u64,
 ) -> ! {
     panic!("AN EXTREMELY LARGE OOF OCCURRED, NOT POG")
@@ -65,7 +68,7 @@ extern "x86-interrupt" fn double_fault_handler(
 
 /// Timer interrupt handler
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
-    print!(".");
+    /* TODO */
 
     unsafe {
         PICS.lock()

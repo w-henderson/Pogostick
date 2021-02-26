@@ -3,6 +3,7 @@
 
 pub mod gdt;
 pub mod interrupts;
+pub mod keyboard;
 pub mod vga;
 
 /// Initialises interrupt handling
