@@ -1,11 +1,14 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
+#![feature(alloc_error_handler)]
 
+pub mod allocator; // heap allocation
 pub mod gdt; // stack allocation for interrupts
 pub mod input; // input handling
 pub mod interrupts; // interrupt and exception handling
-pub mod mem; // heap allocation
+pub mod mem; // paging
 pub mod vga; // console output
+extern crate alloc; // lower level heap allocation
 
 /// Initialises interrupt handling
 pub fn init() {
@@ -27,4 +30,9 @@ pub fn idle_loop() -> ! {
 /// Alias for `x86_64::instructions::hlt();`
 pub fn idle() {
     x86_64::instructions::hlt();
+}
+
+#[alloc_error_handler]
+fn alloc_error_handler(layout: alloc::alloc::Layout) -> ! {
+    panic!("allocation error: {:?}", layout);
 }

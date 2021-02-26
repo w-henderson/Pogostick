@@ -1,7 +1,7 @@
 // Handles interrupts.
 // Double faults are handled with a delightful message.
 
-use crate::{gdt, print, println};
+use crate::{gdt, println};
 use lazy_static::lazy_static;
 use pic8259_simple::ChainedPics;
 use spin;

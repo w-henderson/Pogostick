@@ -2,7 +2,7 @@
 // Basically does everything to do with keyboard input
 
 use crate::interrupts::{InterruptIndex, PICS};
-use crate::{print, println};
+use crate::print;
 use lazy_static::lazy_static;
 use pc_keyboard::{layouts, DecodedKey, HandleControl, KeyCode, Keyboard, ScancodeSet1};
 use spin::Mutex;
