@@ -1,3 +1,8 @@
+// GLOBAL DESCRIPTOR TABLE
+// Loads task state segment holding interrupt stack table.
+// This, I believe, allows us to use a different bit of memory for handling exceptions.
+// This means that we won't get stuck in a boot loop if an exception occurs and we can't handle it because we're out of memory.
+
 use lazy_static::lazy_static;
 use x86_64::structures::gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector};
 use x86_64::structures::tss::TaskStateSegment;

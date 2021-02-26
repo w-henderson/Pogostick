@@ -8,18 +8,11 @@ use vga::Writer;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    pog_os::init();
+
     println!("Hello, world!");
 
-    pog_os::init();
-    fn stack_overflow() {
-        stack_overflow();
-    }
-
-    stack_overflow();
-
-    println!("Didn't crash pog");
-
-    loop {}
+    pog_os::idle();
 }
 
 #[panic_handler]
@@ -27,5 +20,5 @@ pub extern "C" fn _start() -> ! {
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     println!("{}", _info);
 
-    loop {}
+    pog_os::idle();
 }
