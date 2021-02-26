@@ -3,6 +3,7 @@
 
 mod vga;
 
+use pog_os::input::stdin;
 use pog_os::interrupts::init_idt;
 use vga::Writer;
 
@@ -12,7 +13,11 @@ pub extern "C" fn _start() -> ! {
 
     println!("Hello, world!");
 
-    pog_os::idle();
+    let new_char = stdin.get_char();
+
+    println!("Char: {}", new_char);
+
+    pog_os::idle_loop();
 }
 
 #[panic_handler]
@@ -20,5 +25,5 @@ pub extern "C" fn _start() -> ! {
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     println!("{}", _info);
 
-    pog_os::idle();
+    pog_os::idle_loop();
 }

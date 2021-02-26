@@ -2,8 +2,8 @@
 #![feature(abi_x86_interrupt)]
 
 pub mod gdt;
+pub mod input;
 pub mod interrupts;
-pub mod keyboard;
 pub mod vga;
 
 /// Initialises interrupt handling
@@ -17,8 +17,13 @@ pub fn init() {
 }
 
 /// Forever sends halt instructions allowing the CPU to idle
-pub fn idle() -> ! {
+pub fn idle_loop() -> ! {
     loop {
         x86_64::instructions::hlt();
     }
+}
+
+/// Alias for `x86_64::instructions::hlt();`
+pub fn idle() {
+    x86_64::instructions::hlt();
 }

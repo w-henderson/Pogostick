@@ -1,5 +1,5 @@
 // Handles keyboard interrupts
-// Basically does everything to do with the keyboard
+// Basically does everything to do with keyboard input
 
 use crate::interrupts::{InterruptIndex, PICS};
 use crate::{print, println};
@@ -8,6 +8,48 @@ use pc_keyboard::{layouts, DecodedKey, HandleControl, KeyCode, Keyboard, Scancod
 use spin::Mutex;
 use x86_64::instructions::port::Port;
 use x86_64::structures::idt::InterruptStackFrame;
+
+pub struct Stdin {
+    chars: Mutex<[char; 64]>,
+    location: Mutex<usize>,
+}
+
+impl Stdin {
+    pub fn clear(&self) {
+        let mut chars = self.chars.lock();
+        let mut loc = self.location.lock();
+        *chars = ['\0'; 64];
+        *loc = 0_usize;
+    }
+
+    pub fn get_char(&self) -> char {
+        let loc = self.location.lock();
+        let last_loc = *loc;
+        drop(loc);
+
+        loop {
+            let loc = self.location.lock();
+            let new_loc = *loc;
+
+            drop(loc);
+
+            if new_loc != last_loc {
+                break;
+            }
+            crate::idle();
+        }
+
+        let chars = self.chars.lock();
+        return chars[last_loc];
+    }
+}
+
+lazy_static! {
+    pub static ref stdin: Stdin = Stdin {
+        chars: Mutex::new(['\0'; 64]),
+        location: Mutex::new(0_usize)
+    };
+}
 
 /// Keyboard interrupt handler, manages keyboard input
 pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
@@ -37,7 +79,10 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Inte
 }
 
 fn handle_raw_char_input(character: char) {
-    print!("{}", character);
+    let mut chars = stdin.chars.lock();
+    let mut loc = stdin.location.lock();
+    chars[*loc] = character;
+    *loc += 1;
 }
 
 fn handle_raw_key_input(key: KeyCode) {
