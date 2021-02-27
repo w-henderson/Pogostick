@@ -4,7 +4,7 @@ use core::fmt::Write;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use volatile::Volatile;
-use x86_64::instructions::interrupts;
+use x86_64::instructions::{interrupts, port::Port};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -30,10 +30,10 @@ pub enum Colour {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
-struct ColourCode(u8);
+pub struct ColourCode(u8);
 
 impl ColourCode {
-    fn new(fg: Colour, bg: Colour) -> ColourCode {
+    pub fn new(fg: Colour, bg: Colour) -> ColourCode {
         ColourCode((bg as u8) << 4 | (fg as u8))
     }
 }
@@ -45,8 +45,8 @@ struct ScreenChar {
     colour_code: ColourCode,
 }
 
-const BUFFER_HEIGHT: usize = 25;
-const BUFFER_WIDTH: usize = 80;
+pub const BUFFER_HEIGHT: usize = 25;
+pub const BUFFER_WIDTH: usize = 80;
 
 #[repr(transparent)]
 struct Buffer {
@@ -68,6 +68,20 @@ impl Writer {
         }
     }
 
+    /// Set cursor position
+    unsafe fn update_cursor(&mut self, x: usize, y: usize) {
+        let mut cursor_port_1: Port<u8> = Port::new(0x3D4); // these two registers work together to store a `u16`
+        let mut cursor_port_2: Port<u8> = Port::new(0x3D5); // they are separate though so we address them separately
+        let pos = y as u16 * BUFFER_WIDTH as u16 + x as u16;
+
+        // move the cursor to the given position
+        cursor_port_1.write(0x0F);
+        cursor_port_2.write((pos & 0xFF) as u8);
+        cursor_port_1.write(0x0E);
+        cursor_port_2.write(((pos >> 8) & 0xFF) as u8);
+    }
+
+    /// Write a character to the output
     pub fn write_char(&mut self, byte: u8) {
         match byte {
             b'\n' => self.new_line(),
@@ -85,16 +99,20 @@ impl Writer {
                 });
 
                 self.column_position += 1;
+                unsafe { self.update_cursor(self.column_position, BUFFER_HEIGHT - 1) };
             }
         }
     }
 
+    /// Overwrite the last character of the output
     pub fn overwrite_char(&mut self, byte: u8) {
         self.column_position -= 1;
         self.write_char(byte);
         self.column_position -= 1;
+        unsafe { self.update_cursor(self.column_position, BUFFER_HEIGHT - 1) };
     }
 
+    /// Write a string to the output
     pub fn write_string(&mut self, s: &str) {
         for byte in s.bytes() {
             match byte {
@@ -104,6 +122,14 @@ impl Writer {
         }
     }
 
+    /// Write a coloured string to the output
+    pub fn write_string_colour(&mut self, s: &str, colour: ColourCode) {
+        self.colour_code = colour;
+        self.write_string(s);
+        self.colour_code = ColourCode::new(Colour::White, Colour::Black);
+    }
+
+    /// Write a character at a specific position to the output
     pub fn write_char_at(&mut self, byte: u8, row: usize, col: usize) {
         self.buffer.chars[row][col].write(ScreenChar {
             ascii: byte,
@@ -111,7 +137,8 @@ impl Writer {
         });
     }
 
-    fn new_line(&mut self) {
+    /// Create a new line
+    pub fn new_line(&mut self) {
         for row in 1..BUFFER_HEIGHT {
             for col in 0..BUFFER_WIDTH {
                 let character = self.buffer.chars[row][col].read();
@@ -122,10 +149,11 @@ impl Writer {
         self.column_position = 0;
     }
 
+    /// Clear a row of the output with blank characters
     fn clear_row(&mut self, row: usize) {
         let blank_char = ScreenChar {
             ascii: b' ',
-            colour_code: self.colour_code,
+            colour_code: ColourCode::new(Colour::White, Colour::Black),
         };
         for col in 0..BUFFER_WIDTH {
             self.buffer.chars[row][col].write(blank_char);

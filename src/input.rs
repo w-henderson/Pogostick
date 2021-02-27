@@ -16,11 +16,13 @@ pub struct Stdin {
 }
 
 impl Stdin {
+    /// Clear the standard input stream
     pub fn clear(&self) {
         let mut chars = self.chars.lock();
         *chars = Vec::new();
     }
 
+    /// Get a character input (blocking)
     pub fn get_char(&self) -> char {
         let chars = self.chars.lock();
         let chars_len = chars.len();
@@ -43,18 +45,27 @@ impl Stdin {
         chars[chars.len() - 1]
     }
 
+    /// Get a string input (blocking)
     pub fn get_str(&self) -> String {
+        self.clear();
         let mut result = String::new();
         let mut new_char = self.get_char();
 
         while new_char != '\n' {
             if new_char == '\x08' {
-                result.pop();
+                if let Some(_) = result.pop() {
+                    interrupts::without_interrupts(|| {
+                        let mut writer = WRITER.lock();
+                        writer.overwrite_char(0x20);
+                    });
+                }
             } else {
                 result.push(new_char);
             }
             new_char = self.get_char();
         }
+
+        self.clear();
 
         result
     }
@@ -96,7 +107,7 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Inte
 fn handle_raw_char_input(character: char) {
     let mut chars = STDIN.chars.lock();
 
-    if character.is_alphanumeric() || character == '\n' {
+    if character.is_alphanumeric() || character == '\n' || character == ' ' {
         chars.push(character);
         print!("{}", character);
     } else {
@@ -105,10 +116,6 @@ fn handle_raw_char_input(character: char) {
         if character == '\x08' {
             // Handle backspace
             chars.push(character);
-            interrupts::without_interrupts(|| {
-                let mut writer = WRITER.lock();
-                writer.overwrite_char(0x20);
-            });
         }
     }
 }

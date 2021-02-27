@@ -3,6 +3,7 @@
 #![feature(alloc_error_handler)]
 
 pub mod allocator; // heap allocation
+pub mod conhost; // console input
 pub mod gdt; // stack allocation for interrupts
 pub mod input; // input handling
 pub mod interrupts; // interrupt and exception handling

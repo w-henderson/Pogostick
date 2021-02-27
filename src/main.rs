@@ -3,7 +3,7 @@
 
 extern crate alloc;
 use bootloader::{entry_point, BootInfo};
-use pog_os::{allocator, input::STDIN, mem, print, println};
+use pog_os::{allocator, conhost, input::STDIN, mem, print, println};
 use x86_64::VirtAddr;
 
 entry_point!(kernel_main);
@@ -17,11 +17,7 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap init failed");
     // === END INIT SECTION ===
 
-    print!("What's your name? : ");
-    let name = STDIN.get_str();
-    println!("Hello, {}!", name);
-
-    pog_os::idle_loop();
+    conhost::console_loop();
 }
 
 #[panic_handler]
