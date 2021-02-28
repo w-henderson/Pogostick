@@ -13,6 +13,7 @@ use x86_64::structures::idt::InterruptStackFrame;
 
 pub struct Stdin {
     chars: Mutex<Vec<char>>,
+    requesting: Mutex<bool>,
 }
 
 impl Stdin {
@@ -25,7 +26,10 @@ impl Stdin {
     /// Get a character input (blocking)
     pub fn get_char(&self) -> char {
         let chars = self.chars.lock();
+        let mut requesting = self.requesting.lock();
         let chars_len = chars.len();
+        *requesting = true;
+        drop(requesting);
         drop(chars);
 
         loop {
@@ -41,6 +45,8 @@ impl Stdin {
         }
 
         let chars = self.chars.lock();
+        let mut requesting = self.requesting.lock();
+        *requesting = false;
 
         chars[chars.len() - 1]
     }
@@ -74,6 +80,7 @@ impl Stdin {
 lazy_static! {
     pub static ref STDIN: Stdin = Stdin {
         chars: Mutex::new(Vec::new()),
+        requesting: Mutex::new(false),
     };
 }
 
@@ -105,17 +112,19 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut Inte
 }
 
 fn handle_raw_char_input(character: char) {
-    let mut chars = STDIN.chars.lock();
+    if *STDIN.requesting.lock() {
+        let mut chars = STDIN.chars.lock();
 
-    if character.is_alphanumeric() || character == '\n' || character == ' ' {
-        chars.push(character);
-        print!("{}", character);
-    } else {
-        // NON PRINTABLE CHARACTER HANDLING
-
-        if character == '\x08' {
-            // Handle backspace
+        if character.is_alphanumeric() || character == '\n' || character == ' ' {
             chars.push(character);
+            print!("{}", character);
+        } else {
+            // NON PRINTABLE CHARACTER HANDLING
+
+            if character == '\x08' {
+                // Handle backspace
+                chars.push(character);
+            }
         }
     }
 }

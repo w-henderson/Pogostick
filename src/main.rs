@@ -3,7 +3,7 @@
 
 extern crate alloc;
 use bootloader::{entry_point, BootInfo};
-use pog_os::{allocator, conhost, input::STDIN, mem, print, println};
+use pog_os::{allocator, conhost, mem, println};
 use x86_64::VirtAddr;
 
 entry_point!(kernel_main);
