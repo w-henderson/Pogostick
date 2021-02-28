@@ -60,10 +60,13 @@ extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFra
 
 /// Double exception handler, basically a crash but not quite
 extern "x86-interrupt" fn double_fault_handler(
-    _stack_frame: &mut InterruptStackFrame,
-    _error_code: u64,
+    stack_frame: &mut InterruptStackFrame,
+    error_code: u64,
 ) -> ! {
-    panic!("AN EXTREMELY LARGE OOF OCCURRED, NOT POG")
+    panic!(
+        "{}: AN EXTREMELY LARGE OOF OCCURRED, NOT POG:\n{:?}",
+        error_code, stack_frame
+    );
 }
 
 /// Timer interrupt handler

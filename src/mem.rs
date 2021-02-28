@@ -44,7 +44,7 @@ unsafe impl FrameAllocator<Size4KiB> for BootInfoFrameAllocator {
 
 /// Get a reference to the active level 4 (top level) table.
 /// Does this by getting its physical address, adding the offset, and casting it as a mutable pointer.
-pub unsafe fn init(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
+pub unsafe fn mapper(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
     let level_4_table = active_level_4_table(physical_memory_offset);
     OffsetPageTable::new(level_4_table, physical_memory_offset)
 }

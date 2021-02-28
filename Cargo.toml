@@ -14,13 +14,15 @@ x86_64 = "0.13.2"
 pic8259_simple = "0.2.0"
 pc-keyboard = "0.5.0"
 linked_list_allocator = "0.8.0"
+bit_field = "0.9.0"
 
 [dependencies.lazy_static]
 version = "1.0"
 features = ["spin_no_std"]
 
 [package.metadata.bootimage]
-run-command = ["qemu-system-x86_64", "-L", "D:\\Programs\\qemu", "-drive", "format=raw,file={}"]
+#run-command = ["qemu-system-x86_64", "-L", "D:\\Programs\\qemu", "-drive", "format=raw,file={}", "-hda", "disk.img"]
+run-command = ["sh", "build.sh"]
 
 [profile.dev]
 panic = "abort"

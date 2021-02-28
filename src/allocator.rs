@@ -9,7 +9,7 @@ use x86_64::{
     VirtAddr,
 };
 
-pub const HEAP_START: usize = 0x6666_9999_0000;
+pub const HEAP_START: usize = 0x4444_4444_0000;
 pub const HEAP_SIZE: usize = 1024 * 1024; // 1 MB
 
 #[global_allocator]

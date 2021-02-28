@@ -3,11 +3,13 @@
 #![feature(alloc_error_handler)]
 
 pub mod allocator; // heap allocation
+pub mod ata; // drive management
 pub mod conhost; // console input
 pub mod gdt; // stack allocation for interrupts
 pub mod input; // input handling
 pub mod interrupts; // interrupt and exception handling
 pub mod mem; // paging
+pub mod time; // everything to do with time
 pub mod vga; // console output
 extern crate alloc; // lower level heap allocation
 

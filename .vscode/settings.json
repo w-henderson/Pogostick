@@ -1,0 +1,4 @@
+{
+    "rust-analyzer.cargo.target": "target.json",
+    "rust-analyzer.checkOnSave.allTargets": false
+}
