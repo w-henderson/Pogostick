@@ -1,4 +1,4 @@
 {
-    "rust-analyzer.cargo.target": "target.json",
+    "rust-analyzer.cargo.target": "pogostick.json",
     "rust-analyzer.checkOnSave.allTargets": false
 }

@@ -190,18 +190,51 @@ impl Bus {
 
 lazy_static! {
     pub static ref BUSES: Mutex<Vec<Bus>> = Mutex::new(Vec::new());
+    pub static ref DRIVES: Mutex<Vec<Drive>> = Mutex::new(Vec::new());
 }
 
+/// Represents a generic ATA drive
+pub struct Drive {
+    pub bus_index: u8,
+    pub drive_index: u8,
+    pub model: String,
+    pub serial: String,
+    pub sectors: u32,
+}
+
+impl Drive {
+    pub fn read(&self, block: u32, mut buf: &mut [u8]) {
+        let mut buses = BUSES.lock();
+        unsafe { buses[self.bus_index as usize].read(self.drive_index, block, &mut buf) };
+    }
+    pub fn write(&self, block: u32, buf: &[u8]) {
+        let mut buses = BUSES.lock();
+        unsafe { buses[self.bus_index as usize].write(self.drive_index, block, &buf) };
+    }
+    pub fn find_available_sector(&self) -> Option<u32> {
+        let mut current_sector = self.sectors - 1;
+
+        while current_sector > 0 {
+            let mut buf = [0_u8; 512];
+            self.read(current_sector, &mut buf);
+            if buf.iter().all(|el| *el == 0) {
+                return Some(current_sector);
+            }
+            current_sector -= 1;
+        }
+
+        None
+    }
+}
+
+/// Initialise and identify ATA drives
 pub fn init() {
     let mut buses = BUSES.lock();
+    let mut drives = DRIVES.lock();
+
     //buses.push(Bus::new(0, 0x1F0, 0x3F6, 14)); doesn't work for some reason
     buses.push(Bus::new(1, 0x170, 0x376, 15));
-}
 
-pub fn list() -> Vec<(u8, u8, String, String, u32, String)> {
-    let mut buses = BUSES.lock();
-    let mut res = Vec::new();
-    // would iter over buses but bus 0 is broken for some reason
     for drive in 0..2 {
         if let Some(buf) = unsafe { buses[0_usize].identify_drive(drive) } {
             let mut serial = String::new();
@@ -221,20 +254,14 @@ pub fn list() -> Vec<(u8, u8, String, String, u32, String)> {
             model = model.trim().into();
 
             let sectors = (buf[61] as u32) << 16 | (buf[60] as u32);
-            let (size, unit) = (sectors / 2048, String::from("MB"));
-            res.push((1, drive, model, serial, size, unit));
+
+            drives.push(Drive {
+                bus_index: 0,
+                drive_index: drive,
+                model,
+                serial,
+                sectors,
+            });
         }
     }
-
-    res
-}
-
-pub fn read(bus: u8, drive: u8, block: u32, mut buf: &mut [u8]) {
-    let mut buses = BUSES.lock();
-    unsafe { buses[bus as usize].read(drive, block, &mut buf) };
-}
-
-pub fn write(bus: u8, drive: u8, block: u32, buf: &[u8]) {
-    let mut buses = BUSES.lock();
-    unsafe { buses[bus as usize].write(drive, block, &buf) };
 }

@@ -1,3 +1,5 @@
+use core::num::ParseFloatError;
+
 use crate::input::STDIN;
 use crate::println;
 use crate::vga::{Colour, ColourCode, BUFFER_HEIGHT, WRITER};
@@ -93,6 +95,14 @@ struct AddCommand {
 
 impl Command for AddCommand {
     fn new(args: &[&str]) -> Box<Self> {
+        if args.len() != 2 {
+            return Box::new(AddCommand {
+                number1: 0_f64,
+                number2: 0_f64,
+                parse_error: true,
+            });
+        }
+
         let parsed_number1 = args[0].parse::<f64>();
         let parsed_number2 = args[1].parse::<f64>();
         if parsed_number1.is_ok() && parsed_number2.is_ok() {
@@ -127,10 +137,15 @@ impl Command for DiskInfoCommand {
         Box::new(DiskInfoCommand)
     }
     fn execute(&self) -> u8 {
-        for (bus, drive, model, serial, size, unit) in crate::ata::list() {
+        let drives = crate::ata::DRIVES.lock();
+        for drive in &*drives {
             println!(
-                "ATA {}: {} {} {} ({} {})",
-                bus, drive, model, serial, size, unit
+                "ATA {}: {} {} {} ({} MB)",
+                drive.bus_index,
+                drive.drive_index,
+                drive.model,
+                drive.serial,
+                drive.sectors / 2048
             );
         }
         0

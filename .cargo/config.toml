@@ -5,5 +5,8 @@ build-std-features = ["compiler-builtins-mem"]
 [build]
 target = "pogostick.json"
 
+[metadata]
+target = "pogostick.json"
+
 [target.'cfg(target_os = "none")']
 runner = "bootimage runner"
