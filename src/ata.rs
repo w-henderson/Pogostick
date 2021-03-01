@@ -193,18 +193,9 @@ lazy_static! {
 }
 
 pub fn init() {
-    {
-        let mut buses = BUSES.lock();
-        //buses.push(Bus::new(0, 0x1F0, 0x3F6, 14)); doesn't work for some reason
-        buses.push(Bus::new(1, 0x170, 0x376, 15));
-    }
-
-    for (bus, drive, model, serial, size, unit) in list() {
-        println!(
-            "ATA {}: {} {} {} ({} {})",
-            bus, drive, model, serial, size, unit
-        );
-    }
+    let mut buses = BUSES.lock();
+    //buses.push(Bus::new(0, 0x1F0, 0x3F6, 14)); doesn't work for some reason
+    buses.push(Bus::new(1, 0x170, 0x376, 15));
 }
 
 pub fn list() -> Vec<(u8, u8, String, String, u32, String)> {
@@ -213,7 +204,6 @@ pub fn list() -> Vec<(u8, u8, String, String, u32, String)> {
     // would iter over buses but bus 0 is broken for some reason
     for drive in 0..2 {
         if let Some(buf) = unsafe { buses[0_usize].identify_drive(drive) } {
-            println!("identified drive");
             let mut serial = String::new();
             for i in 10..20 {
                 for &b in &buf[i].to_be_bytes() {
@@ -231,7 +221,7 @@ pub fn list() -> Vec<(u8, u8, String, String, u32, String)> {
             model = model.trim().into();
 
             let sectors = (buf[61] as u32) << 16 | (buf[60] as u32);
-            let (size, unit) = (sectors * 512, String::from("b"));
+            let (size, unit) = (sectors / 2048, String::from("MB"));
             res.push((1, drive, model, serial, size, unit));
         }
     }

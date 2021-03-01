@@ -23,6 +23,7 @@ pub fn console_loop() -> ! {
             "echo" => Echo::new(&command_split[1..]),
             "clear" => ClearCommand::new(&[]),
             "add" => AddCommand::new(&command_split[1..]),
+            "disk" => DiskInfoCommand::new(&[]),
             _ => NullCommand::new(&[]),
         };
 
@@ -115,6 +116,24 @@ impl Command for AddCommand {
         } else {
             1
         }
+    }
+}
+
+// Command to list connected disks
+struct DiskInfoCommand;
+
+impl Command for DiskInfoCommand {
+    fn new(_args: &[&str]) -> Box<Self> {
+        Box::new(DiskInfoCommand)
+    }
+    fn execute(&self) -> u8 {
+        for (bus, drive, model, serial, size, unit) in crate::ata::list() {
+            println!(
+                "ATA {}: {} {} {} ({} {})",
+                bus, drive, model, serial, size, unit
+            );
+        }
+        0
     }
 }
 
