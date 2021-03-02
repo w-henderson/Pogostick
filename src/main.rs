@@ -12,11 +12,11 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
     pogostick::init(boot_info);
     pogostick::fs::detect_fs();
 
-    /*let mut fs = pogostick::fs::FILESYSTEM.lock();
-    let filesystem = fs.as_mut().unwrap();
-    println!("{:?}", filesystem.get_file("pogchamp"));
-    filesystem.write_file("pogchamp", vec![1, 2, 3, 4]);
-    println!("{:?}", filesystem.get_file("pogchamp"));*/
+    {
+        let mut fs = pogostick::fs::FILESYSTEM.lock();
+        let filesystem = fs.as_mut().unwrap();
+        filesystem.write_file("testbigfile", [0xff_u8; 1000].to_vec());
+    }
 
     conhost::console_loop();
 }

@@ -85,7 +85,8 @@ impl FileSystem {
         let mut current_sector = DataSector::init(new_file_sector, drive, bytes_to_write);
 
         while written_bytes < bytes.len() {
-            bytes_to_write = bytes.clone().drain(..written_bytes).collect();
+            bytes_to_write = bytes.clone();
+            bytes_to_write.drain(..written_bytes);
             bytes_to_write.truncate(506);
             let extension_file_sector = drive.find_available_sector().unwrap();
             current_sector.continuation_addr = Some(extension_file_sector);
@@ -243,10 +244,10 @@ impl FileTableSector {
         let mut buf = [0_u8; 512];
 
         if let Some(continuation) = self.continuation_addr {
-            buf[0] = continuation.get_bits(0..8) as u8;
-            buf[1] = continuation.get_bits(8..16) as u8;
-            buf[2] = continuation.get_bits(16..24) as u8;
-            buf[3] = continuation.get_bits(24..32) as u8;
+            buf[0] = continuation.get_bits(24..32) as u8;
+            buf[1] = continuation.get_bits(16..24) as u8;
+            buf[2] = continuation.get_bits(8..16) as u8;
+            buf[3] = continuation.get_bits(0..8) as u8;
         } else {
             buf[0] = 0;
             buf[1] = 0;
@@ -260,10 +261,10 @@ impl FileTableSector {
                 buf[index + current_index] = byte;
             }
 
-            buf[index + 59] = file.entry_addr.get_bits(0..8) as u8;
-            buf[index + 60] = file.entry_addr.get_bits(8..16) as u8;
-            buf[index + 61] = file.entry_addr.get_bits(16..24) as u8;
-            buf[index + 62] = file.entry_addr.get_bits(24..32) as u8;
+            buf[index + 59] = file.entry_addr.get_bits(24..32) as u8;
+            buf[index + 60] = file.entry_addr.get_bits(16..24) as u8;
+            buf[index + 61] = file.entry_addr.get_bits(8..16) as u8;
+            buf[index + 62] = file.entry_addr.get_bits(0..8) as u8;
 
             index += 63;
         }
@@ -334,8 +335,8 @@ impl DataSector {
     pub fn init(addr: u32, drive: &Drive, bytes: Vec<u8>) -> Self {
         let mut buf = [0_u8; 512];
         let size = bytes.len() as u16;
-        buf[4] = size.get_bits(0..8) as u8;
-        buf[5] = size.get_bits(8..16) as u8;
+        buf[4] = size.get_bits(8..16) as u8;
+        buf[5] = size.get_bits(0..8) as u8;
 
         let index = 6;
         for (current_index, byte) in bytes.iter().enumerate() {
@@ -351,10 +352,10 @@ impl DataSector {
         drive.read(self.addr, &mut buf);
 
         if let Some(continuation) = self.continuation_addr {
-            buf[0] = continuation.get_bits(0..8) as u8;
-            buf[1] = continuation.get_bits(8..16) as u8;
-            buf[2] = continuation.get_bits(16..24) as u8;
-            buf[3] = continuation.get_bits(24..32) as u8;
+            buf[0] = continuation.get_bits(24..32) as u8;
+            buf[1] = continuation.get_bits(16..24) as u8;
+            buf[2] = continuation.get_bits(8..16) as u8;
+            buf[3] = continuation.get_bits(0..8) as u8;
         } else {
             buf[0] = 0;
             buf[1] = 0;

@@ -1,5 +1,3 @@
-use core::num::ParseFloatError;
-
 use crate::input::STDIN;
 use crate::println;
 use crate::vga::{Colour, ColourCode, BUFFER_HEIGHT, WRITER};
@@ -27,7 +25,8 @@ pub fn console_loop() -> ! {
             "add" => AddCommand::new(&command_split[1..]),
             "disk" => DiskInfoCommand::new(&[]),
             "ls" => ListFilesCommand::new(&[]),
-            "write" => WriteCommand::new(&command_split[1..]),
+            "wt" => WriteCommand::new(&command_split[1..]),
+            "rt" => ReadCommand::new(&command_split[1..]),
             _ => NullCommand::new(&[]),
         };
 
@@ -194,6 +193,37 @@ impl Command for WriteCommand {
         filesystem.write_file(&self.path, self.text.as_bytes().to_vec());
         println!("successfully written file");
         0
+    }
+}
+
+/// Command to read text from a file
+struct ReadCommand {
+    path: String,
+}
+
+impl Command for ReadCommand {
+    fn new(args: &[&str]) -> Box<Self> {
+        Box::new(ReadCommand {
+            path: args[0].to_owned(),
+        })
+    }
+    fn execute(&self) -> u8 {
+        let mut fs = crate::fs::FILESYSTEM.lock();
+        let filesystem = fs.as_mut().unwrap();
+        let file = filesystem.get_file(&self.path);
+
+        if let Some(f) = file {
+            let file_bytes = f.read();
+            if let Ok(file_text) = core::str::from_utf8(&file_bytes) {
+                println!("{}", file_text)
+            } else {
+                println!("warn: cannot detect encoding, printing as hex\n");
+                println!("{}", hex::encode(file_bytes));
+            }
+            0
+        } else {
+            1
+        }
     }
 }
 
