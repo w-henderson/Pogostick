@@ -22,6 +22,10 @@ impl FileSystem {
         let mut current_table = self.entry_table.clone();
 
         println!("looking at sector {}", current_sector);
+        println!("{:?}", current_table.files);
+
+        // REMOVE ENTRY TABLE
+        // READ TABLE EVERY TIME
 
         while current_table
             .files
@@ -49,21 +53,24 @@ impl FileSystem {
         );
     }
 
-    pub fn write_file(&self, path: &str, bytes: Vec<u8>) {
+    pub fn write_file(&mut self, path: &str, bytes: Vec<u8>) {
         let mut current_sector = self.entry_sector;
-        let mut current_table = self.entry_table.clone();
+        let mut current_table = &mut self.entry_table;
+        let mut new_table: FileTableSector;
 
         while current_table.files.len() == 4 {
             if let Some(new_addr) = current_table.continuation_addr {
                 current_sector = new_addr;
-                current_table = FileTableSector::new(current_sector, self.drive_index as usize);
+                new_table = FileTableSector::new(current_sector, self.drive_index as usize);
+                current_table = &mut new_table;
             } else {
                 let drive = &ata::DRIVES.lock()[self.drive_index as usize];
                 let new_sector = drive.find_available_sector().unwrap();
                 drop(drive);
 
                 current_table.set_continuation(new_sector, self.drive_index as usize);
-                current_table = FileTableSector::init(new_sector, self.drive_index as usize);
+                new_table = FileTableSector::init(new_sector, self.drive_index as usize);
+                current_table = &mut new_table;
             }
         }
 
