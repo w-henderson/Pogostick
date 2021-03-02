@@ -115,7 +115,8 @@ fn handle_raw_char_input(character: char) {
     if *STDIN.requesting.lock() {
         let mut chars = STDIN.chars.lock();
 
-        if character.is_alphanumeric() || character == '\n' || character == ' ' {
+        if character.is_alphanumeric() || character == '\n' || character == ' ' || character == '/'
+        {
             chars.push(character);
             print!("{}", character);
         } else {

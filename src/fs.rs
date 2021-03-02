@@ -1,6 +1,8 @@
 use crate::ata::{self, Drive};
+use crate::input::STDIN;
 use crate::println;
-use alloc::{borrow::ToOwned, string::String, vec::Vec};
+use crate::vga::{info, okay, warn};
+use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 use bit_field::BitField;
 use lazy_static::lazy_static;
 use spin::Mutex;
@@ -371,10 +373,45 @@ impl DataSector {
     }
 }
 
-/// Create the basic filesystem
-fn create_fs(drive_index: u8) {
+/// Create the basic filesystem on a drive specified by the user.
+fn create_fs() {
     let drives = ata::DRIVES.lock();
     let mut filesystem = FILESYSTEM.lock();
+
+    info(&format!("detected {} drive(s):\n", drives.len()));
+    for drive in &*drives {
+        println!(
+            "         {}: {} {} ({} MB)",
+            drive.drive_index,
+            drive.model,
+            drive.serial,
+            drive.sectors / 2048
+        );
+    }
+
+    println!();
+    let mut drive_index = -1_i8;
+
+    while drive_index < 0 || drive_index >= drives.len() as i8 {
+        info("select a drive or type x to exit: ");
+        let mut char_buf = [0_u8; 1];
+        STDIN.get_char().encode_utf8(&mut char_buf);
+        println!();
+        match char_buf[0] {
+            48..=57 => drive_index = (char_buf[0] - 48) as i8,
+            120 => return warn("running in diskless mode, some features will be unavailable\n"),
+            _ => continue,
+        }
+    }
+
+    warn("this disk will be overwritten, continue? (y/n): ");
+    let confirmation = STDIN.get_char();
+    println!();
+    if confirmation != 'y' {
+        return warn("running in diskless mode, some features will be unavailable\n");
+    }
+
+    info(&format!("creating filesystem on disk {}\n", drive_index));
 
     let mut init_buf = [0_u8; 512];
     init_buf[508] = b'P';
@@ -389,10 +426,12 @@ fn create_fs(drive_index: u8) {
     drop(drives);
 
     *filesystem = Some(FileSystem {
-        drive_index: drive_index,
+        drive_index: drive_index as u8,
         entry_sector: sectors - 1,
         entry_table: FileTableSector::new(sectors - 1, drive_index as usize),
     });
+
+    okay("filesystem successfully created\n");
 }
 
 /// Try to detect a filesystem on any drive.
@@ -423,19 +462,17 @@ pub fn detect_fs() {
     let filesystem = FILESYSTEM.lock();
 
     if let Some(fs) = &*filesystem {
-        println!(
-            "filesystem detected on drive {}, entry sector at {}",
-            fs.drive_index, fs.entry_sector
-        );
-        let files_len = fs.entry_table.files.len();
-        println!("detected files: {}", files_len);
-        println!("first file name: {}", fs.entry_table.files[0].name);
-        println!("first file addr: {}", fs.entry_table.files[0].entry_addr);
+        okay(&format!("filesystem detected on disk {}\n", fs.drive_index));
     } else {
-        println!("no filesystem detected, initialising one");
-        drop(filesystem);
-
-        create_fs(0);
+        warn("no filesystem detected, initialise one now? (y/n): ");
+        let char_input = STDIN.get_char();
+        println!();
+        if char_input == 'y' {
+            drop(filesystem);
+            create_fs();
+        } else {
+            warn("running in diskless mode, some features will be unavailable\n");
+        }
     }
 }
 

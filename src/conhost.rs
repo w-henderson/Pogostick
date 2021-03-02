@@ -1,13 +1,27 @@
 use crate::input::STDIN;
 use crate::println;
-use crate::vga::{Colour, ColourCode, BUFFER_HEIGHT, WRITER};
-use alloc::{borrow::ToOwned, boxed::Box, string::String, vec::Vec};
+use crate::vga::{err, info, okay, warn, Colour, ColourCode, BUFFER_HEIGHT, WRITER};
+use alloc::{
+    borrow::ToOwned,
+    boxed::Box,
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
+use lazy_static::lazy_static;
+use spin::Mutex;
 use x86_64::instructions::interrupts;
+
+lazy_static! {
+    pub static ref PATH: Mutex<String> = Mutex::new(String::new());
+}
 
 /// Provide a console input forever
 pub fn console_loop() -> ! {
+    println!();
+
     let prompt_colour = ColourCode::new(Colour::LightGreen, Colour::Black);
-    let error_colour = ColourCode::new(Colour::LightRed, Colour::Black);
+    let path_colour = ColourCode::new(Colour::LightCyan, Colour::Black);
 
     let lock_write_colour = |text: &str, colour: ColourCode| {
         interrupts::without_interrupts(|| {
@@ -16,15 +30,25 @@ pub fn console_loop() -> ! {
     };
 
     loop {
-        lock_write_colour("pogo:$ ", prompt_colour);
+        let path_lock = PATH.lock();
+        let path = path_lock.clone();
+        let mut path_display = format!("/{}/ ", path);
+        if path_display == "// " {
+            path_display = "/ ".to_string();
+        }
+        drop(path_lock);
+
+        lock_write_colour("pogo:$~", prompt_colour);
+        lock_write_colour(&path_display, path_colour);
         let command_str = STDIN.get_str();
         let command_split: Vec<&str> = command_str.split(" ").collect();
         let command: Box<dyn Command> = match command_split[0] {
+            "cd" => CDCommand::new(&command_split[1..]),
             "echo" => Echo::new(&command_split[1..]),
             "clear" => ClearCommand::new(&[]),
             "add" => AddCommand::new(&command_split[1..]),
             "disk" => DiskInfoCommand::new(&[]),
-            "ls" => ListFilesCommand::new(&[]),
+            "ls" | "dir" => ListFilesCommand::new(&[]),
             "wt" => WriteCommand::new(&command_split[1..]),
             "rt" => ReadCommand::new(&command_split[1..]),
             _ => NullCommand::new(&[]),
@@ -32,8 +56,9 @@ pub fn console_loop() -> ! {
 
         let status_code = command.execute();
         match status_code {
-            1 => lock_write_colour("error: generic command failure\n\n", error_colour),
-            255 => lock_write_colour("error: command not found\n\n", error_colour),
+            1 => err("generic command failure\n\n"),
+            2 => err("filesystem not mounted\n\n"),
+            255 => err("command not found\n\n"),
             _ => println!(),
         }
     }
@@ -46,7 +71,7 @@ trait Command {
         Self: Sized;
 
     /// Execute command, returning status code.
-    /// Status codes are 0 for success, 1 for generic error, and 255 for command not found.
+    /// Status codes are 0 for success, 1 for generic error, 2 for filesystem error, and 255 for command not found.
     fn execute(&self) -> u8;
 }
 
@@ -66,6 +91,29 @@ impl Command for Echo {
     }
     fn execute(&self) -> u8 {
         println!("{}", self.text);
+        0
+    }
+}
+
+struct CDCommand {
+    pub new_dir: String,
+}
+
+impl Command for CDCommand {
+    fn new(args: &[&str]) -> Box<Self> {
+        Box::new(CDCommand {
+            new_dir: args[0].to_string(),
+        })
+    }
+    fn execute(&self) -> u8 {
+        let mut new_dir = self.new_dir.clone();
+        if new_dir.chars().nth(0) == Some('/') {
+            new_dir.remove(0);
+        }
+        if new_dir.chars().last() == Some('/') {
+            new_dir.pop();
+        }
+        *PATH.lock() = new_dir;
         0
     }
 }
@@ -140,14 +188,14 @@ impl Command for DiskInfoCommand {
     fn execute(&self) -> u8 {
         let drives = crate::ata::DRIVES.lock();
         for drive in &*drives {
-            println!(
-                "ATA {}: {} {} {} ({} MB)",
+            info(&format!(
+                "ATA {}: {} {} {} ({} MB)\n",
                 drive.bus_index,
                 drive.drive_index,
                 drive.model,
                 drive.serial,
                 drive.sectors / 2048
-            );
+            ));
         }
         0
     }
@@ -162,15 +210,19 @@ impl Command for ListFilesCommand {
     }
     fn execute(&self) -> u8 {
         let mut fs = crate::fs::FILESYSTEM.lock();
-        let filesystem = fs.as_mut().unwrap();
-        let files = filesystem.list_files();
-        if files.len() == 0 {
-            return 1;
+        if let Some(filesystem) = fs.as_mut() {
+            let files = filesystem.list_files();
+            if files.len() == 0 {
+                println!("no files in this directory");
+                return 0;
+            }
+            for file in files {
+                println!(" - {}", file);
+            }
+            0
+        } else {
+            2
         }
-        for file in files {
-            println!(" - {}", file);
-        }
-        0
     }
 }
 
@@ -189,10 +241,13 @@ impl Command for WriteCommand {
     }
     fn execute(&self) -> u8 {
         let mut fs = crate::fs::FILESYSTEM.lock();
-        let filesystem = fs.as_mut().unwrap();
-        filesystem.write_file(&self.path, self.text.as_bytes().to_vec());
-        println!("successfully written file");
-        0
+        if let Some(filesystem) = fs.as_mut() {
+            filesystem.write_file(&self.path, self.text.as_bytes().to_vec());
+            okay("successfully written file\n");
+            0
+        } else {
+            2
+        }
     }
 }
 
@@ -209,20 +264,24 @@ impl Command for ReadCommand {
     }
     fn execute(&self) -> u8 {
         let mut fs = crate::fs::FILESYSTEM.lock();
-        let filesystem = fs.as_mut().unwrap();
-        let file = filesystem.get_file(&self.path);
 
-        if let Some(f) = file {
-            let file_bytes = f.read();
-            if let Ok(file_text) = core::str::from_utf8(&file_bytes) {
-                println!("{}", file_text)
+        if let Some(filesystem) = fs.as_mut() {
+            let file = filesystem.get_file(&self.path);
+
+            if let Some(f) = file {
+                let file_bytes = f.read();
+                if let Ok(file_text) = core::str::from_utf8(&file_bytes) {
+                    println!("{}", file_text)
+                } else {
+                    warn("cannot detect encoding, printing as hex\n\n");
+                    println!("{}", hex::encode(file_bytes));
+                }
+                0
             } else {
-                println!("warn: cannot detect encoding, printing as hex\n");
-                println!("{}", hex::encode(file_bytes));
+                1
             }
-            0
         } else {
-            1
+            2
         }
     }
 }

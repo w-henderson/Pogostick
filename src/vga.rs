@@ -187,6 +187,46 @@ macro_rules! println {
     ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
 }
 
+pub fn err(string: &str) {
+    interrupts::without_interrupts(|| {
+        let mut writer = WRITER.lock();
+        writer.write_char(b'[');
+        writer.write_string_colour(" ERR ", ColourCode::new(Colour::LightRed, Colour::Black));
+        writer.write_string("]  ");
+        writer.write_string(string);
+    });
+}
+
+pub fn warn(string: &str) {
+    interrupts::without_interrupts(|| {
+        let mut writer = WRITER.lock();
+        writer.write_char(b'[');
+        writer.write_string_colour(" WARN ", ColourCode::new(Colour::Yellow, Colour::Black));
+        writer.write_string("] ");
+        writer.write_string(string);
+    });
+}
+
+pub fn info(string: &str) {
+    interrupts::without_interrupts(|| {
+        let mut writer = WRITER.lock();
+        writer.write_char(b'[');
+        writer.write_string_colour(" INFO ", ColourCode::new(Colour::LightCyan, Colour::Black));
+        writer.write_string("] ");
+        writer.write_string(string);
+    });
+}
+
+pub fn okay(string: &str) {
+    interrupts::without_interrupts(|| {
+        let mut writer = WRITER.lock();
+        writer.write_char(b'[');
+        writer.write_string_colour(" OKAY ", ColourCode::new(Colour::LightGreen, Colour::Black));
+        writer.write_string("] ");
+        writer.write_string(string);
+    });
+}
+
 #[doc(hidden)]
 pub fn _print(args: core::fmt::Arguments) {
     interrupts::without_interrupts(|| {
