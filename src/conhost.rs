@@ -3,7 +3,7 @@ use core::num::ParseFloatError;
 use crate::input::STDIN;
 use crate::println;
 use crate::vga::{Colour, ColourCode, BUFFER_HEIGHT, WRITER};
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{borrow::ToOwned, boxed::Box, string::String, vec::Vec};
 use x86_64::instructions::interrupts;
 
 /// Provide a console input forever
@@ -26,6 +26,8 @@ pub fn console_loop() -> ! {
             "clear" => ClearCommand::new(&[]),
             "add" => AddCommand::new(&command_split[1..]),
             "disk" => DiskInfoCommand::new(&[]),
+            "ls" => ListFilesCommand::new(&[]),
+            "write" => WriteCommand::new(&command_split[1..]),
             _ => NullCommand::new(&[]),
         };
 
@@ -148,6 +150,49 @@ impl Command for DiskInfoCommand {
                 drive.sectors / 2048
             );
         }
+        0
+    }
+}
+
+/// Command to list files
+struct ListFilesCommand;
+
+impl Command for ListFilesCommand {
+    fn new(_args: &[&str]) -> Box<Self> {
+        Box::new(ListFilesCommand)
+    }
+    fn execute(&self) -> u8 {
+        let mut fs = crate::fs::FILESYSTEM.lock();
+        let filesystem = fs.as_mut().unwrap();
+        let files = filesystem.list_files();
+        if files.len() == 0 {
+            return 1;
+        }
+        for file in files {
+            println!(" - {}", file);
+        }
+        0
+    }
+}
+
+/// Command to write text to a file
+struct WriteCommand {
+    path: String,
+    text: String,
+}
+
+impl Command for WriteCommand {
+    fn new(args: &[&str]) -> Box<Self> {
+        Box::new(WriteCommand {
+            path: args[0].to_owned(),
+            text: args[1..].join(" "),
+        })
+    }
+    fn execute(&self) -> u8 {
+        let mut fs = crate::fs::FILESYSTEM.lock();
+        let filesystem = fs.as_mut().unwrap();
+        filesystem.write_file(&self.path, self.text.as_bytes().to_vec());
+        println!("successfully written file");
         0
     }
 }

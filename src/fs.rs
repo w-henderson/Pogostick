@@ -21,12 +21,6 @@ impl FileSystem {
         let mut current_sector = self.entry_sector;
         let mut current_table = self.entry_table.clone();
 
-        println!("looking at sector {}", current_sector);
-        println!("{:?}", current_table.files);
-
-        // REMOVE ENTRY TABLE
-        // READ TABLE EVERY TIME
-
         while current_table
             .files
             .iter()
@@ -35,13 +29,11 @@ impl FileSystem {
         {
             if let Some(new_addr) = current_table.continuation_addr {
                 current_sector = new_addr;
-                println!("found continuation");
                 current_table = FileTableSector::new(current_sector, self.drive_index as usize);
             } else {
                 return None;
             }
         }
-        println!("found file");
 
         return Some(
             current_table
@@ -64,9 +56,10 @@ impl FileSystem {
                 new_table = FileTableSector::new(current_sector, self.drive_index as usize);
                 current_table = &mut new_table;
             } else {
-                let drive = &ata::DRIVES.lock()[self.drive_index as usize];
+                let drives = ata::DRIVES.lock();
+                let drive = &drives[self.drive_index as usize];
                 let new_sector = drive.find_available_sector().unwrap();
-                drop(drive);
+                drop(drives);
 
                 current_table.set_continuation(new_sector, self.drive_index as usize);
                 new_table = FileTableSector::init(new_sector, self.drive_index as usize);
@@ -74,10 +67,7 @@ impl FileSystem {
             }
         }
 
-        println!("found sector to write to");
-
         let drives = ata::DRIVES.lock();
-        println!("locked drives");
         let new_file_sector = drives[self.drive_index as usize]
             .find_available_sector()
             .unwrap();
@@ -85,17 +75,14 @@ impl FileSystem {
         drop(drives);
 
         current_table.add_file(path, new_file_sector);
-        println!("added file");
 
         let drives = ata::DRIVES.lock();
-        println!("locked drives again");
         let drive = &drives[self.drive_index as usize];
 
         let mut bytes_to_write = bytes.clone();
         bytes_to_write.truncate(506);
         let mut written_bytes = bytes_to_write.len();
         let mut current_sector = DataSector::init(new_file_sector, drive, bytes_to_write);
-        println!("inited current sector");
 
         while written_bytes < bytes.len() {
             bytes_to_write = bytes.clone().drain(..written_bytes).collect();
@@ -106,8 +93,27 @@ impl FileSystem {
             written_bytes += bytes_to_write.len();
             current_sector = DataSector::init(extension_file_sector, drive, bytes_to_write);
         }
+    }
 
-        println!("done");
+    pub fn list_files(&self) -> Vec<String> {
+        let mut result: Vec<String> = Vec::new();
+        let start_table = &self.entry_table;
+        result.extend(start_table.files.iter().map(|f| f.name.clone()));
+
+        if start_table.continuation_addr.is_some() {
+            let mut next_addr = start_table.continuation_addr.unwrap();
+            loop {
+                let table = FileTableSector::new(next_addr, self.drive_index as usize);
+                result.extend(table.files.iter().map(|f| f.name.clone()));
+                if table.continuation_addr.is_some() {
+                    next_addr = table.continuation_addr.unwrap();
+                } else {
+                    break;
+                }
+            }
+        };
+
+        result
     }
 }
 
@@ -283,7 +289,6 @@ impl FileTableSector {
             drive_index: self.drive_index,
             entry_addr: addr,
         });
-        println!("files length: {}", self.files.len());
         self.update_physical_drive();
     }
 }
