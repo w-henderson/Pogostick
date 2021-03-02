@@ -58,7 +58,7 @@ impl FileSystem {
         let mut current_table = &mut self.entry_table;
         let mut new_table: FileTableSector;
 
-        while current_table.files.len() == 4 {
+        while current_table.files.len() == 8 {
             if let Some(new_addr) = current_table.continuation_addr {
                 current_sector = new_addr;
                 new_table = FileTableSector::new(current_sector, self.drive_index as usize);
@@ -177,7 +177,7 @@ impl FileTableSector {
         let mut files: Vec<File> = Vec::new();
 
         let data_bytes = &buf[4..508]; // bytes 508 - 511 are ignored as they contain "POGO"
-        for i in 0_usize..4 {
+        for i in 0_usize..8 {
             let file_bytes = &data_bytes[i * 63..(i + 1) * 63];
             let file_name_bytes = &file_bytes[0..59];
             let file_addr_bytes = &file_bytes[59..63];
@@ -258,7 +258,14 @@ impl FileTableSector {
             buf[index + 60] = file.entry_addr.get_bits(8..16) as u8;
             buf[index + 61] = file.entry_addr.get_bits(16..24) as u8;
             buf[index + 62] = file.entry_addr.get_bits(24..32) as u8;
+
+            index += 63;
         }
+
+        buf[508] = b'P';
+        buf[509] = b'O';
+        buf[510] = b'G';
+        buf[511] = b'O';
 
         drive.write(self.addr, &buf);
     }
@@ -270,12 +277,13 @@ impl FileTableSector {
     }
 
     pub fn add_file(&mut self, path: &str, addr: u32) {
-        assert!(self.files.len() < 4);
+        assert!(self.files.len() < 8);
         self.files.push(File {
             name: path.to_owned(),
             drive_index: self.drive_index,
             entry_addr: addr,
         });
+        println!("files length: {}", self.files.len());
         self.update_physical_drive();
     }
 }
