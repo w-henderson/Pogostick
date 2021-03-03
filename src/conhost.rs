@@ -1,5 +1,6 @@
 use crate::input::STDIN;
 use crate::println;
+use crate::time::Time;
 use crate::vga::{err, info, okay, warn, Colour, ColourCode, BUFFER_HEIGHT, WRITER};
 use alloc::{
     borrow::ToOwned,
@@ -18,7 +19,10 @@ lazy_static! {
 
 /// Provide a console input forever
 pub fn console_loop() -> ! {
-    println!();
+    info(&format!(
+        "boot completed at {}\n\n",
+        Time::get().to_string()
+    ));
 
     let prompt_colour = ColourCode::new(Colour::LightGreen, Colour::Black);
     let path_colour = ColourCode::new(Colour::LightCyan, Colour::Black);
@@ -51,6 +55,7 @@ pub fn console_loop() -> ! {
             "ls" | "dir" => ListFilesCommand::new(&[]),
             "wt" => WriteCommand::new(&command_split[1..]),
             "rt" => ReadCommand::new(&command_split[1..]),
+            "time" => TimeCommand::new(&[]),
             _ => NullCommand::new(&[]),
         };
 
@@ -95,6 +100,7 @@ impl Command for Echo {
     }
 }
 
+/// Change directory command
 struct CDCommand {
     pub new_dir: String,
 }
@@ -131,6 +137,19 @@ impl Command for ClearCommand {
                 WRITER.lock().new_line();
             }
         });
+        0
+    }
+}
+
+/// Command to get the current time
+struct TimeCommand;
+
+impl Command for TimeCommand {
+    fn new(_args: &[&str]) -> Box<Self> {
+        Box::new(TimeCommand)
+    }
+    fn execute(&self) -> u8 {
+        println!("{}", Time::get().to_string());
         0
     }
 }
