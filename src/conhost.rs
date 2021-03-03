@@ -14,7 +14,7 @@ use spin::Mutex;
 use x86_64::instructions::interrupts;
 
 lazy_static! {
-    pub static ref PATH: Mutex<String> = Mutex::new(String::new());
+    pub static ref PATH: Mutex<Vec<String>> = Mutex::new(Vec::new());
 }
 
 /// Provide a console input forever
@@ -36,10 +36,12 @@ pub fn console_loop() -> ! {
     loop {
         let path_lock = PATH.lock();
         let path = path_lock.clone();
-        let mut path_display = format!("/{}/ ", path);
-        if path_display == "// " {
-            path_display = "/ ".to_string();
-        }
+        let mut path_display = path.iter().fold(String::from("/"), |mut acc, x| {
+            acc.extend(x.chars());
+            acc.push('/');
+            acc
+        });
+        path_display.push(' ');
         drop(path_lock);
 
         lock_write_colour("pogo:$~", prompt_colour);
@@ -53,6 +55,7 @@ pub fn console_loop() -> ! {
             "add" => AddCommand::new(&command_split[1..]),
             "disk" => DiskInfoCommand::new(&[]),
             "ls" | "dir" => ListFilesCommand::new(&[]),
+            "mkdir" => CreateDirCommand::new(&command_split[1..]),
             "wt" => WriteCommand::new(&command_split[1..]),
             "rt" => ReadCommand::new(&command_split[1..]),
             "time" => TimeCommand::new(&[]),
@@ -64,8 +67,11 @@ pub fn console_loop() -> ! {
             1 => err("generic command failure\n\n"),
             2 => err("filesystem not mounted\n\n"),
             255 => err("command not found\n\n"),
-            _ => println!(),
-        }
+            _ => {
+                println!();
+                0
+            }
+        };
     }
 }
 
@@ -112,15 +118,34 @@ impl Command for CDCommand {
         })
     }
     fn execute(&self) -> u8 {
-        let mut new_dir = self.new_dir.clone();
-        if new_dir.chars().nth(0) == Some('/') {
-            new_dir.remove(0);
+        let filesystem = crate::fs::FILESYSTEM.lock();
+        if let Some(fs) = filesystem.as_ref() {
+            let mut new_dir = self.new_dir.clone();
+            if new_dir.chars().nth(0) == Some('/') {
+                new_dir.remove(0);
+            }
+            if new_dir.chars().last() == Some('/') {
+                new_dir.pop();
+            }
+
+            let mut prospective_path = PATH.lock().clone();
+            if new_dir == "" {
+                prospective_path = Vec::new();
+            } else if new_dir == ".." {
+                prospective_path.pop();
+            } else {
+                prospective_path.extend(new_dir.split("/").map(|s| s.to_owned()));
+            }
+
+            if fs.list_files(&prospective_path).is_some() {
+                *PATH.lock() = prospective_path.clone();
+                0
+            } else {
+                1
+            }
+        } else {
+            2
         }
-        if new_dir.chars().last() == Some('/') {
-            new_dir.pop();
-        }
-        *PATH.lock() = new_dir;
-        0
     }
 }
 
@@ -229,8 +254,9 @@ impl Command for ListFilesCommand {
     }
     fn execute(&self) -> u8 {
         let mut fs = crate::fs::FILESYSTEM.lock();
+        let path = PATH.lock().clone();
         if let Some(filesystem) = fs.as_mut() {
-            let files = filesystem.list_files();
+            let files = filesystem.list_files(&path).unwrap();
             if files.len() == 0 {
                 println!("no files in this directory");
                 return 0;
@@ -247,23 +273,26 @@ impl Command for ListFilesCommand {
 
 /// Command to write text to a file
 struct WriteCommand {
-    path: String,
+    name: String,
     text: String,
 }
 
 impl Command for WriteCommand {
     fn new(args: &[&str]) -> Box<Self> {
         Box::new(WriteCommand {
-            path: args[0].to_owned(),
+            name: args[0].to_owned(),
             text: args[1..].join(" "),
         })
     }
     fn execute(&self) -> u8 {
         let mut fs = crate::fs::FILESYSTEM.lock();
+        let mut path = PATH.lock().clone();
+        path.extend(self.name.split("/").map(|s| s.to_owned()));
         if let Some(filesystem) = fs.as_mut() {
-            filesystem.write_file(&self.path, self.text.as_bytes().to_vec());
-            okay("successfully written file\n");
-            0
+            match filesystem.write_file(&path, self.text.as_bytes().to_vec()) {
+                0 => okay("successfully written file\n"),
+                error_code => error_code,
+            }
         } else {
             2
         }
@@ -272,20 +301,22 @@ impl Command for WriteCommand {
 
 /// Command to read text from a file
 struct ReadCommand {
-    path: String,
+    name: String,
 }
 
 impl Command for ReadCommand {
     fn new(args: &[&str]) -> Box<Self> {
         Box::new(ReadCommand {
-            path: args[0].to_owned(),
+            name: args[0].to_owned(),
         })
     }
     fn execute(&self) -> u8 {
         let mut fs = crate::fs::FILESYSTEM.lock();
+        let mut path = PATH.lock().clone();
+        path.extend(self.name.split("/").map(|s| s.to_owned()));
 
         if let Some(filesystem) = fs.as_mut() {
-            let file = filesystem.get_file(&self.path);
+            let file = filesystem.get_file(&path);
 
             if let Some(f) = file {
                 let file_bytes = f.read();
@@ -299,6 +330,30 @@ impl Command for ReadCommand {
             } else {
                 1
             }
+        } else {
+            2
+        }
+    }
+}
+
+/// Create directory command
+struct CreateDirCommand {
+    name: String,
+}
+
+impl Command for CreateDirCommand {
+    fn new(args: &[&str]) -> Box<Self> {
+        Box::new(CreateDirCommand {
+            name: args[0].to_owned(),
+        })
+    }
+    fn execute(&self) -> u8 {
+        let mut fs = crate::fs::FILESYSTEM.lock();
+        let mut path = PATH.lock().clone();
+        path.push(self.name.clone());
+
+        if let Some(filesystem) = fs.as_mut() {
+            filesystem.create_dir(&path)
         } else {
             2
         }

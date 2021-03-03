@@ -187,7 +187,7 @@ macro_rules! println {
     ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
 }
 
-pub fn err(string: &str) {
+pub fn err(string: &str) -> u8 {
     interrupts::without_interrupts(|| {
         let mut writer = WRITER.lock();
         writer.write_char(b'[');
@@ -195,6 +195,7 @@ pub fn err(string: &str) {
         writer.write_string("]  ");
         writer.write_string(string);
     });
+    1
 }
 
 pub fn warn(string: &str) {
@@ -217,7 +218,7 @@ pub fn info(string: &str) {
     });
 }
 
-pub fn okay(string: &str) {
+pub fn okay(string: &str) -> u8 {
     interrupts::without_interrupts(|| {
         let mut writer = WRITER.lock();
         writer.write_char(b'[');
@@ -225,6 +226,7 @@ pub fn okay(string: &str) {
         writer.write_string("] ");
         writer.write_string(string);
     });
+    0
 }
 
 #[doc(hidden)]
