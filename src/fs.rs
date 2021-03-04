@@ -1,7 +1,7 @@
 use crate::ata::{self, Drive};
 use crate::input::STDIN;
-use crate::println;
 use crate::vga::{info, okay, warn};
+use crate::{println, ExitCode};
 use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 use bit_field::BitField;
 use lazy_static::lazy_static;
@@ -11,7 +11,7 @@ lazy_static! {
     pub static ref FILESYSTEM: Mutex<Option<FileSystem>> = Mutex::new(None);
 }
 
-/// Represents the filesystem
+/// Struct representing the filesystem.
 pub struct FileSystem {
     pub drive_index: u8,
     pub entry_sector: u32,
@@ -21,7 +21,6 @@ pub struct FileSystem {
 impl FileSystem {
     /// Get a file at the given path from the filesystem, or None if not found
     pub fn get_file(&self, path: &Vec<String>) -> Option<File> {
-        let mut current_sector = self.entry_sector;
         let mut current_table = self.entry_table.clone();
         let mut current_dir: Option<String> = None;
 
@@ -30,9 +29,8 @@ impl FileSystem {
             // Iterate over the tables representing the dir
             while !current_table.contains_object(obj) {
                 if let Some(new_addr) = current_table.continuation_addr {
-                    current_sector = new_addr;
-                    current_table = FileTableSector::new(
-                        current_sector,
+                    current_table = FileTableSector::load(
+                        new_addr,
                         self.drive_index as usize,
                         current_dir.clone(),
                     );
@@ -44,7 +42,7 @@ impl FileSystem {
             // If the found object is a directory, else if it is the final file return it
             if let Some(new_dir) = current_table.get_dir(obj) {
                 current_dir = Some(obj.clone());
-                current_table = FileTableSector::new(
+                current_table = FileTableSector::load(
                     new_dir.entry_addr,
                     self.drive_index as usize,
                     current_dir.clone(),
@@ -57,7 +55,8 @@ impl FileSystem {
         None
     }
 
-    pub fn write_file(&mut self, path: &Vec<String>, bytes: Vec<u8>) -> u8 {
+    /// Write a file to the given path containing the specified bytes.
+    pub fn write_file(&mut self, path: &Vec<String>, bytes: Vec<u8>) -> ExitCode {
         let mut table_obj: FileTableSector;
         let mut table = &mut self.entry_table;
 
@@ -65,23 +64,23 @@ impl FileSystem {
             // Iterate over the tables representing the dir
             while table.get_dir(dir).is_none() {
                 if let Some(new_addr) = table.continuation_addr {
-                    table_obj = FileTableSector::new(
+                    table_obj = FileTableSector::load(
                         new_addr,
                         self.drive_index as usize,
                         table.directory_name.clone(),
                     );
                     table = &mut table_obj;
                 } else {
-                    return 1;
+                    return ExitCode::NotFoundError;
                 }
             }
 
             if let Some(d) = table.get_dir(dir) {
                 table_obj =
-                    FileTableSector::new(d.entry_addr, self.drive_index as usize, Some(d.name));
+                    FileTableSector::load(d.entry_addr, self.drive_index as usize, Some(d.name));
                 table = &mut table_obj;
             } else {
-                return 1;
+                return ExitCode::NotFoundError;
             }
         }
 
@@ -89,7 +88,7 @@ impl FileSystem {
 
         while table.files.len() == 8 {
             if let Some(new_addr) = table.continuation_addr {
-                table_obj = FileTableSector::new(
+                table_obj = FileTableSector::load(
                     new_addr,
                     self.drive_index as usize,
                     main_dir_name.clone(),
@@ -101,8 +100,8 @@ impl FileSystem {
                 let new_sector = drive.find_available_sector().unwrap();
                 drop(drives);
 
-                table.set_continuation(new_sector, self.drive_index as usize);
-                table_obj = FileTableSector::init(
+                table.set_continuation(new_sector);
+                table_obj = FileTableSector::new(
                     new_sector,
                     self.drive_index as usize,
                     main_dir_name.clone(),
@@ -126,7 +125,7 @@ impl FileSystem {
         let mut bytes_to_write = bytes.clone();
         bytes_to_write.truncate(506);
         let mut written_bytes = bytes_to_write.len();
-        let mut current_sector = DataSector::init(new_file_sector, drive, bytes_to_write);
+        let mut current_sector = DataSector::new(new_file_sector, drive, bytes_to_write);
 
         while written_bytes < bytes.len() {
             bytes_to_write = bytes.clone();
@@ -136,13 +135,14 @@ impl FileSystem {
             current_sector.continuation_addr = Some(extension_file_sector);
             current_sector.update_physical_drive(drive);
             written_bytes += bytes_to_write.len();
-            current_sector = DataSector::init(extension_file_sector, drive, bytes_to_write);
+            current_sector = DataSector::new(extension_file_sector, drive, bytes_to_write);
         }
 
-        0
+        ExitCode::Success
     }
 
-    pub fn create_dir(&mut self, path: &Vec<String>) -> u8 {
+    /// Create a directory at the given path.
+    pub fn create_dir(&mut self, path: &Vec<String>) -> ExitCode {
         let mut table_obj: FileTableSector;
         let mut table = &mut self.entry_table;
 
@@ -150,23 +150,23 @@ impl FileSystem {
             // Iterate over the tables representing the dir
             while table.get_dir(dir).is_none() {
                 if let Some(new_addr) = table.continuation_addr {
-                    table_obj = FileTableSector::new(
+                    table_obj = FileTableSector::load(
                         new_addr,
                         self.drive_index as usize,
                         table.directory_name.clone(),
                     );
                     table = &mut table_obj;
                 } else {
-                    return 1;
+                    return ExitCode::NotFoundError;
                 }
             }
 
             if let Some(d) = table.get_dir(dir) {
                 table_obj =
-                    FileTableSector::new(d.entry_addr, self.drive_index as usize, Some(d.name));
+                    FileTableSector::load(d.entry_addr, self.drive_index as usize, Some(d.name));
                 table = &mut table_obj;
             } else {
-                return 1;
+                return ExitCode::NotFoundError;
             }
         }
 
@@ -174,7 +174,7 @@ impl FileSystem {
 
         while table.files.len() == 8 {
             if let Some(new_addr) = table.continuation_addr {
-                table_obj = FileTableSector::new(
+                table_obj = FileTableSector::load(
                     new_addr,
                     self.drive_index as usize,
                     main_dir_name.clone(),
@@ -186,8 +186,8 @@ impl FileSystem {
                 let new_sector = drive.find_available_sector().unwrap();
                 drop(drives);
 
-                table.set_continuation(new_sector, self.drive_index as usize);
-                table_obj = FileTableSector::init(
+                table.set_continuation(new_sector);
+                table_obj = FileTableSector::new(
                     new_sector,
                     self.drive_index as usize,
                     main_dir_name.clone(),
@@ -204,11 +204,12 @@ impl FileSystem {
         drop(drives);
 
         table.add_dir(&path[path.len() - 1], new_file_sector);
-        FileTableSector::init(new_file_sector, self.drive_index as usize, None);
+        FileTableSector::new(new_file_sector, self.drive_index as usize, None);
 
-        0
+        ExitCode::Success
     }
 
+    /// List the files at a given path.
     pub fn list_files(&self, path: &Vec<String>) -> Option<Vec<String>> {
         let mut result: Vec<String> = Vec::new();
         let mut table = self.entry_table.clone();
@@ -217,7 +218,7 @@ impl FileSystem {
             // Iterate over the tables representing the dir
             while table.get_dir(dir).is_none() {
                 if let Some(new_addr) = table.continuation_addr {
-                    table = FileTableSector::new(
+                    table = FileTableSector::load(
                         new_addr,
                         self.drive_index as usize,
                         table.directory_name,
@@ -228,7 +229,8 @@ impl FileSystem {
             }
 
             if let Some(d) = table.get_dir(dir) {
-                table = FileTableSector::new(d.entry_addr, self.drive_index as usize, Some(d.name));
+                table =
+                    FileTableSector::load(d.entry_addr, self.drive_index as usize, Some(d.name));
             } else {
                 return None;
             }
@@ -242,7 +244,7 @@ impl FileSystem {
         if table.continuation_addr.is_some() {
             let mut next_addr = table.continuation_addr.unwrap();
             loop {
-                let table = FileTableSector::new(
+                let table = FileTableSector::load(
                     next_addr,
                     self.drive_index as usize,
                     table.directory_name.clone(),
@@ -272,13 +274,14 @@ pub struct File {
 }
 
 impl File {
+    /// Read bytes from the file, following the linked list.
     pub fn read(&self) -> Vec<u8> {
         let drives = ata::DRIVES.lock();
         let drive: &Drive = &drives[self.drive_index];
 
         let mut output_bytes: Vec<u8> = Vec::new();
         let mut current_addr = self.entry_addr;
-        let mut current_sector = DataSector::new(current_addr, drive);
+        let mut current_sector = DataSector::load(current_addr, drive);
 
         loop {
             output_bytes.extend(
@@ -288,7 +291,7 @@ impl File {
             );
             if let Some(next_sector) = current_sector.continuation_addr {
                 current_addr = next_sector;
-                current_sector = DataSector::new(current_addr, drive);
+                current_sector = DataSector::load(current_addr, drive);
             } else {
                 break;
             }
@@ -298,7 +301,7 @@ impl File {
     }
 }
 
-/// Abstract struct representing a directory, not connected in any way to disk
+/// Abstract struct representing a directory, not connected in any way to disk.
 #[derive(Clone, Debug)]
 pub struct Dir {
     pub name: String,
@@ -306,13 +309,14 @@ pub struct Dir {
     pub entry_addr: u32,
 }
 
+/// Represents a file type, either a file or directory.
 #[derive(Clone)]
 pub enum FileType {
     File(File), // File object
     Dir(Dir),   // Directory object
 }
 
-/// Represents a sector of the disk containing a file table
+/// Represents a sector of the disk containing a file table.
 #[derive(Clone)]
 pub struct FileTableSector {
     pub addr: u32,
@@ -323,8 +327,8 @@ pub struct FileTableSector {
 }
 
 impl FileTableSector {
-    //// Create a new `FileTableSector` object from its address
-    pub fn new(addr: u32, drive_index: usize, directory_name: Option<String>) -> Self {
+    //// Load a `FileTableSector` object from its address
+    pub fn load(addr: u32, drive_index: usize, directory_name: Option<String>) -> Self {
         let drive: &Drive = &ata::DRIVES.lock()[drive_index];
 
         let mut buf = [0_u8; 512];
@@ -389,8 +393,8 @@ impl FileTableSector {
         }
     }
 
-    /// Initialise a brand new sector on the disk, then return a virtual instance of it
-    pub fn init(new_addr: u32, drive_index: usize, directory_name: Option<String>) -> Self {
+    /// Initialise a brand new sector on the disk, then return a virtual instance of it.
+    pub fn new(new_addr: u32, drive_index: usize, directory_name: Option<String>) -> Self {
         let drive: &Drive = &ata::DRIVES.lock()[drive_index];
 
         let mut init_buf = [0_u8; 512];
@@ -465,11 +469,14 @@ impl FileTableSector {
     }
 
     /// Set the continuation address on disk
-    pub fn set_continuation(&mut self, sector: u32, drive_index: usize) {
+    pub fn set_continuation(&mut self, sector: u32) {
         self.continuation_addr = Some(sector);
         self.update_physical_drive();
     }
 
+    /// Add a file to the table and update the physical drive.
+    /// WARNING: This does not add the file to the disk, only a reference to the file on the table.
+    /// WARNING: This does not create a new table if the current one is full.
     pub fn add_file(&mut self, name: &str, addr: u32) {
         assert!(self.files.len() < 8);
         self.files.push(FileType::File(File {
@@ -480,6 +487,9 @@ impl FileTableSector {
         self.update_physical_drive();
     }
 
+    /// Add a directory to the table and update the physical drive.
+    /// WARNING: This does not add the directory to the disk, only a reference to the directory on the table.
+    /// WARNING: This does not create a new table if the current one is full.
     pub fn add_dir(&mut self, name: &str, addr: u32) {
         assert!(self.files.len() < 8);
         self.files.push(FileType::Dir(Dir {
@@ -490,7 +500,8 @@ impl FileTableSector {
         self.update_physical_drive();
     }
 
-    /// Gets a specified file from the sector
+    /// Gets a specified file from the sector.
+    /// If none is found, returns `None`.
     pub fn get_file(&self, name: &str) -> Option<File> {
         match self.files.iter().find(|el| match el {
             FileType::File(f) => f.name == name,
@@ -501,7 +512,8 @@ impl FileTableSector {
         }
     }
 
-    /// Gets a specified directory from the sector
+    /// Gets a specified directory from the sector.
+    /// If none is found, returns `None`.
     pub fn get_dir(&self, name: &str) -> Option<Dir> {
         match self.files.iter().find(|el| match el {
             FileType::Dir(d) => d.name == name,
@@ -512,7 +524,8 @@ impl FileTableSector {
         }
     }
 
-    /// Checks if sector contains a file or directory with the given name
+    /// Checks if sector contains a file or directory with the given name.
+    /// Does not return the found object.
     pub fn contains_object(&self, name: &str) -> bool {
         self.files
             .iter()
@@ -534,8 +547,8 @@ pub struct DataSector {
 }
 
 impl DataSector {
-    /// Creates a new `DataSector` object from its address
-    pub fn new(addr: u32, drive: &Drive) -> Self {
+    /// Loads a new `DataSector` object from its address
+    pub fn load(addr: u32, drive: &Drive) -> Self {
         let mut buf = [0_u8; 512];
         drive.read(addr, &mut buf);
 
@@ -562,7 +575,7 @@ impl DataSector {
     }
 
     /// Initialise a brand new `DataSector` object on disk, then return a virtual instance
-    pub fn init(addr: u32, drive: &Drive, bytes: Vec<u8>) -> Self {
+    pub fn new(addr: u32, drive: &Drive, bytes: Vec<u8>) -> Self {
         let mut buf = [0_u8; 512];
         let size = bytes.len() as u16;
         buf[4] = size.get_bits(8..16) as u8;
@@ -574,9 +587,10 @@ impl DataSector {
         }
 
         drive.write(addr, &buf);
-        return Self::new(addr, drive);
+        return Self::load(addr, drive);
     }
 
+    /// Updates the physical disk with the contents of the virtual sector.
     pub fn update_physical_drive(&self, drive: &Drive) {
         let mut buf = [0_u8; 512];
         drive.read(self.addr, &mut buf);
@@ -602,6 +616,7 @@ impl DataSector {
 }
 
 /// Create the basic filesystem on a drive specified by the user.
+/// Allows the user to cancel at several points.
 fn create_fs() {
     let drives = ata::DRIVES.lock();
     let mut filesystem = FILESYSTEM.lock();
@@ -656,7 +671,7 @@ fn create_fs() {
     *filesystem = Some(FileSystem {
         drive_index: drive_index as u8,
         entry_sector: sectors - 1,
-        entry_table: FileTableSector::new(sectors - 1, drive_index as usize, None),
+        entry_table: FileTableSector::load(sectors - 1, drive_index as usize, None),
     });
 
     okay("filesystem successfully created\n");
@@ -680,7 +695,7 @@ pub fn detect_fs() {
                 *filesystem = Some(FileSystem {
                     drive_index: drive_index,
                     entry_sector,
-                    entry_table: FileTableSector::new(entry_sector, drive_index as usize, None),
+                    entry_table: FileTableSector::load(entry_sector, drive_index as usize, None),
                 });
                 break;
             }
@@ -704,6 +719,7 @@ pub fn detect_fs() {
     }
 }
 
+/// Checks if the filesystem is mounted.
 pub fn is_mounted() -> bool {
     FILESYSTEM.lock().is_some()
 }

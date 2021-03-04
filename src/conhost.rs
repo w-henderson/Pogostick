@@ -1,7 +1,5 @@
-use crate::input::STDIN;
-use crate::println;
-use crate::time::Time;
 use crate::vga::{err, info, okay, warn, Colour, ColourCode, BUFFER_HEIGHT, WRITER};
+use crate::{input::STDIN, println, time::Time, ExitCode};
 use alloc::{
     borrow::ToOwned,
     boxed::Box,
@@ -64,14 +62,10 @@ pub fn console_loop() -> ! {
 
         let status_code = command.execute();
         match status_code {
-            1 => err("generic command failure\n\n"),
-            2 => err("filesystem not mounted\n\n"),
-            255 => err("command not found\n\n"),
-            _ => {
-                println!();
-                0
-            }
+            ExitCode::Success => ExitCode::Success,
+            _ => err(&status_code.to_string()),
         };
+        println!();
     }
 }
 
@@ -83,7 +77,7 @@ trait Command {
 
     /// Execute command, returning status code.
     /// Status codes are 0 for success, 1 for generic error, 2 for filesystem error, and 255 for command not found.
-    fn execute(&self) -> u8;
+    fn execute(&self) -> ExitCode;
 }
 
 /// Basic echo command, prints its input to the output
@@ -100,9 +94,9 @@ impl Command for Echo {
             text: args.join(" "),
         })
     }
-    fn execute(&self) -> u8 {
+    fn execute(&self) -> ExitCode {
         println!("{}", self.text);
-        0
+        ExitCode::Success
     }
 }
 
@@ -117,7 +111,7 @@ impl Command for CDCommand {
             new_dir: args[0].to_string(),
         })
     }
-    fn execute(&self) -> u8 {
+    fn execute(&self) -> ExitCode {
         let filesystem = crate::fs::FILESYSTEM.lock();
         if let Some(fs) = filesystem.as_ref() {
             let mut new_dir = self.new_dir.clone();
@@ -139,12 +133,12 @@ impl Command for CDCommand {
 
             if fs.list_files(&prospective_path).is_some() {
                 *PATH.lock() = prospective_path.clone();
-                0
+                ExitCode::Success
             } else {
-                1
+                ExitCode::NotFoundError
             }
         } else {
-            2
+            ExitCode::NotMountedError
         }
     }
 }
@@ -156,13 +150,13 @@ impl Command for ClearCommand {
     fn new(_args: &[&str]) -> Box<Self> {
         Box::new(ClearCommand)
     }
-    fn execute(&self) -> u8 {
+    fn execute(&self) -> ExitCode {
         interrupts::without_interrupts(|| {
             for _ in 0..BUFFER_HEIGHT {
                 WRITER.lock().new_line();
             }
         });
-        0
+        ExitCode::Success
     }
 }
 
@@ -173,9 +167,9 @@ impl Command for TimeCommand {
     fn new(_args: &[&str]) -> Box<Self> {
         Box::new(TimeCommand)
     }
-    fn execute(&self) -> u8 {
+    fn execute(&self) -> ExitCode {
         println!("{}", Time::get().to_string());
-        0
+        ExitCode::Success
     }
 }
 
@@ -212,12 +206,12 @@ impl Command for AddCommand {
             })
         }
     }
-    fn execute(&self) -> u8 {
+    fn execute(&self) -> ExitCode {
         if !self.parse_error {
             println!("{}", self.number1 + self.number2);
-            0
+            ExitCode::Success
         } else {
-            1
+            ExitCode::ParseError
         }
     }
 }
@@ -229,7 +223,7 @@ impl Command for DiskInfoCommand {
     fn new(_args: &[&str]) -> Box<Self> {
         Box::new(DiskInfoCommand)
     }
-    fn execute(&self) -> u8 {
+    fn execute(&self) -> ExitCode {
         let drives = crate::ata::DRIVES.lock();
         for drive in &*drives {
             info(&format!(
@@ -241,7 +235,7 @@ impl Command for DiskInfoCommand {
                 drive.sectors / 2048
             ));
         }
-        0
+        ExitCode::Success
     }
 }
 
@@ -252,21 +246,21 @@ impl Command for ListFilesCommand {
     fn new(_args: &[&str]) -> Box<Self> {
         Box::new(ListFilesCommand)
     }
-    fn execute(&self) -> u8 {
+    fn execute(&self) -> ExitCode {
         let mut fs = crate::fs::FILESYSTEM.lock();
         let path = PATH.lock().clone();
         if let Some(filesystem) = fs.as_mut() {
             let files = filesystem.list_files(&path).unwrap();
             if files.len() == 0 {
                 println!("no files in this directory");
-                return 0;
+                return ExitCode::Success;
             }
             for file in files {
                 println!(" - {}", file);
             }
-            0
+            ExitCode::Success
         } else {
-            2
+            ExitCode::NotMountedError
         }
     }
 }
@@ -284,17 +278,17 @@ impl Command for WriteCommand {
             text: args[1..].join(" "),
         })
     }
-    fn execute(&self) -> u8 {
+    fn execute(&self) -> ExitCode {
         let mut fs = crate::fs::FILESYSTEM.lock();
         let mut path = PATH.lock().clone();
         path.extend(self.name.split("/").map(|s| s.to_owned()));
         if let Some(filesystem) = fs.as_mut() {
             match filesystem.write_file(&path, self.text.as_bytes().to_vec()) {
-                0 => okay("successfully written file\n"),
+                ExitCode::Success => okay("successfully written file\n"),
                 error_code => error_code,
             }
         } else {
-            2
+            ExitCode::NotMountedError
         }
     }
 }
@@ -310,7 +304,7 @@ impl Command for ReadCommand {
             name: args[0].to_owned(),
         })
     }
-    fn execute(&self) -> u8 {
+    fn execute(&self) -> ExitCode {
         let mut fs = crate::fs::FILESYSTEM.lock();
         let mut path = PATH.lock().clone();
         path.extend(self.name.split("/").map(|s| s.to_owned()));
@@ -326,12 +320,12 @@ impl Command for ReadCommand {
                     warn("cannot detect encoding, printing as hex\n\n");
                     println!("{}", hex::encode(file_bytes));
                 }
-                0
+                ExitCode::Success
             } else {
-                1
+                ExitCode::NotFoundError
             }
         } else {
-            2
+            ExitCode::NotMountedError
         }
     }
 }
@@ -347,7 +341,7 @@ impl Command for CreateDirCommand {
             name: args[0].to_owned(),
         })
     }
-    fn execute(&self) -> u8 {
+    fn execute(&self) -> ExitCode {
         let mut fs = crate::fs::FILESYSTEM.lock();
         let mut path = PATH.lock().clone();
         path.push(self.name.clone());
@@ -355,7 +349,7 @@ impl Command for CreateDirCommand {
         if let Some(filesystem) = fs.as_mut() {
             filesystem.create_dir(&path)
         } else {
-            2
+            ExitCode::NotMountedError
         }
     }
 }
@@ -367,7 +361,7 @@ impl Command for NullCommand {
     fn new(_args: &[&str]) -> Box<Self> {
         Box::new(NullCommand)
     }
-    fn execute(&self) -> u8 {
-        255
+    fn execute(&self) -> ExitCode {
+        ExitCode::InvalidCommandError
     }
 }

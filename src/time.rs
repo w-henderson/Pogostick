@@ -1,6 +1,5 @@
-use alloc::string::{String, ToString};
-use alloc::{format, vec::Vec};
-use core::hint::spin_loop;
+use alloc::vec::Vec;
+use core::{fmt::Display, hint::spin_loop};
 use x86_64::instructions::port::Port;
 
 /// Represents a time
@@ -93,9 +92,10 @@ impl Time {
     }
 }
 
-impl ToString for Time {
-    fn to_string(&self) -> String {
-        format!(
+impl Display for Time {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
             "{:02}:{:02}, {} {} {} 20{:02}",
             self.hour,
             self.minute,

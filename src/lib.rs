@@ -16,6 +16,7 @@ pub mod vga; // console output
 extern crate alloc; // lower level heap allocation
 
 use bootloader::BootInfo;
+use core::fmt::Display;
 use vga::okay;
 use x86_64::addr::VirtAddr;
 
@@ -39,6 +40,36 @@ pub fn init(boot_info: &'static BootInfo) {
     ata::init();
     okay("initialised hard disk drivers\n");
     fs::detect_fs();
+}
+
+/// Represents a status code from a process.
+/// Implements the `Display` trait which returns a descriptive string.
+#[repr(u8)]
+pub enum ExitCode {
+    Success,
+    Error,
+    ParseError,
+    NotFoundError,
+    NotMountedError,
+    InvalidCommandError,
+}
+
+impl Display for ExitCode {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ExitCode::Success => "process exited successfully",
+                ExitCode::Error => "an unknown error occurred",
+                ExitCode::ParseError => "an error was encountered parsing the command",
+                ExitCode::NotFoundError => "the requested file or directory was not found",
+                ExitCode::InvalidCommandError => "command not found",
+                ExitCode::NotMountedError =>
+                    "no filesystem is mounted so file operations are unavailable",
+            }
+        )
+    }
 }
 
 /// Forever sends halt instructions allowing the CPU to idle

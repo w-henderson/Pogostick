@@ -1,4 +1,4 @@
-use crate::{println, time::wait_nano};
+use crate::time::wait_nano;
 use alloc::{string::String, vec::Vec};
 use bit_field::BitField;
 use core::hint::spin_loop;
@@ -6,6 +6,7 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::instructions::port::{Port, PortReadOnly, PortWriteOnly};
 
+/// Represents a command to send to the drive.
 #[repr(u16)]
 enum DriveCommand {
     Read = 0x20,
@@ -13,6 +14,8 @@ enum DriveCommand {
     Identify = 0xEC,
 }
 
+/// Represents the status of the drive.
+/// Not all variants are implemented, but they're here for future improvements.
 #[allow(dead_code)]
 #[repr(usize)]
 enum DriveStatus {
@@ -26,6 +29,9 @@ enum DriveStatus {
     Busy = 7,           // BSY
 }
 
+/// Represents a bus.
+/// Currently only works with the secondary bus.
+/// TODO: fix
 #[derive(Debug, Clone)]
 pub struct Bus {
     id: u8,
@@ -48,6 +54,7 @@ pub struct Bus {
 }
 
 impl Bus {
+    /// Initialises a new bus by creating port references.
     pub fn new(id: u8, io_base: u16, control_base: u16, irq: u8) -> Self {
         Self {
             id,
@@ -70,6 +77,7 @@ impl Bus {
         }
     }
 
+    /// Sends a reset command to the drive.
     unsafe fn reset(&mut self) {
         self.control_reg.write(4);
         wait_nano(5);
@@ -77,12 +85,15 @@ impl Bus {
         wait_nano(2000);
     }
 
+    /// Waits for a command to be processed.
+    /// This is done by reading the status 16 times, as advised on the OSDev wiki.
     unsafe fn wait(&mut self) {
         for _ in 0..16 {
             self.alt_status_reg.read();
         }
     }
 
+    /// Waits until the bus is no longer busy.
     unsafe fn busy_loop(&mut self) {
         self.wait();
         while self.is_busy() {
@@ -90,23 +101,28 @@ impl Bus {
         }
     }
 
+    /// Detects if the bus is currently busy.
     unsafe fn is_busy(&mut self) -> bool {
         self.status_reg.read().get_bit(DriveStatus::Busy as usize)
     }
 
+    /// Detects if the bus has errorred.
     unsafe fn is_error(&mut self) -> bool {
         self.status_reg.read().get_bit(DriveStatus::Error as usize)
     }
 
+    /// Detects if the bus is ready for a command.
     unsafe fn is_ready(&mut self) -> bool {
         self.status_reg.read().get_bit(DriveStatus::Ready as usize)
     }
 
+    /// Selects the specified drive on the bus.
     unsafe fn select_drive(&mut self, drive: u8) {
         let drive_id = 0xA0 | (drive << 4);
         self.drive_reg.write(drive_id);
     }
 
+    /// Sets up the given drive to read or write to a certain block.
     unsafe fn setup(&mut self, drive: u8, block: u32) {
         let drive_id = 0xE0 | (drive << 4);
         self.drive_reg
@@ -117,6 +133,9 @@ impl Bus {
         self.lba2_reg.write(block.get_bits(16..24) as u8);
     }
 
+    /// Sends an IDENTIFY command to the drive.
+    /// Returns `Some([u16; 256])` if the drive successfully identified itself.
+    /// Returns `None` if the drive did not identify itself.
     pub unsafe fn identify_drive(&mut self, drive: u8) -> Option<[u16; 256]> {
         self.reset();
         self.wait();
@@ -160,6 +179,7 @@ impl Bus {
         Some(res)
     }
 
+    /// Reads from the given block into the specified buffer.
     pub unsafe fn read(&mut self, drive: u8, block: u32, buf: &mut [u8]) {
         self.setup(drive, block);
         self.command_reg.write(DriveCommand::Read as u8);
@@ -172,6 +192,7 @@ impl Bus {
         }
     }
 
+    /// Writes to the given block from the specified buffer.
     pub unsafe fn write(&mut self, drive: u8, block: u32, buf: &[u8]) {
         self.setup(drive, block);
         self.command_reg.write(DriveCommand::Write as u8);
@@ -203,14 +224,22 @@ pub struct Drive {
 }
 
 impl Drive {
+    /// Reads 512 bytes from the disk at the specified block.
+    /// Writes these bytes to the given buffer.
     pub fn read(&self, block: u32, mut buf: &mut [u8]) {
         let mut buses = BUSES.lock();
         unsafe { buses[self.bus_index as usize].read(self.drive_index, block, &mut buf) };
     }
+
+    /// Writes a buffer of 512 bytes to the disk at the specified block.
+    /// Buffer must be 512 bytes.
     pub fn write(&self, block: u32, buf: &[u8]) {
         let mut buses = BUSES.lock();
         unsafe { buses[self.bus_index as usize].write(self.drive_index, block, &buf) };
     }
+
+    /// Finds an available sector on the disk.
+    /// If none is found (e.g. the disk is full), returns None.
     pub fn find_available_sector(&self) -> Option<u32> {
         let mut current_sector = self.sectors - 1;
 

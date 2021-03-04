@@ -1,5 +1,6 @@
 // Console output
 
+use crate::ExitCode;
 use core::fmt::Write;
 use lazy_static::lazy_static;
 use spin::Mutex;
@@ -187,15 +188,16 @@ macro_rules! println {
     ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
 }
 
-pub fn err(string: &str) -> u8 {
+pub fn err(string: &str) -> ExitCode {
     interrupts::without_interrupts(|| {
         let mut writer = WRITER.lock();
         writer.write_char(b'[');
         writer.write_string_colour(" ERR ", ColourCode::new(Colour::LightRed, Colour::Black));
         writer.write_string("]  ");
         writer.write_string(string);
+        writer.write_char(b'\n');
     });
-    1
+    ExitCode::Error
 }
 
 pub fn warn(string: &str) {
@@ -218,7 +220,7 @@ pub fn info(string: &str) {
     });
 }
 
-pub fn okay(string: &str) -> u8 {
+pub fn okay(string: &str) -> ExitCode {
     interrupts::without_interrupts(|| {
         let mut writer = WRITER.lock();
         writer.write_char(b'[');
@@ -226,7 +228,7 @@ pub fn okay(string: &str) -> u8 {
         writer.write_string("] ");
         writer.write_string(string);
     });
-    0
+    ExitCode::Success
 }
 
 #[doc(hidden)]
