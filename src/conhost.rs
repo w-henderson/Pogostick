@@ -56,6 +56,8 @@ pub fn console_loop() -> ! {
             "mkdir" => CreateDirCommand::new(&command_split[1..]),
             "wt" => WriteCommand::new(&command_split[1..]),
             "rt" => ReadCommand::new(&command_split[1..]),
+            "rm" => RemoveFileCommand::new(&command_split[1..]),
+            "rmdir" => RemoveDirCommand::new(&command_split[1..]),
             "time" => TimeCommand::new(&[]),
             _ => NullCommand::new(&[]),
         };
@@ -216,7 +218,7 @@ impl Command for AddCommand {
     }
 }
 
-// Command to list connected disks
+/// Command to list connected disks
 struct DiskInfoCommand;
 
 impl Command for DiskInfoCommand {
@@ -259,6 +261,54 @@ impl Command for ListFilesCommand {
                 println!(" - {}", file);
             }
             ExitCode::Success
+        } else {
+            ExitCode::NotMountedError
+        }
+    }
+}
+
+/// Command to remove a file from the disk
+struct RemoveFileCommand {
+    name: String,
+}
+
+impl Command for RemoveFileCommand {
+    fn new(args: &[&str]) -> Box<Self> {
+        Box::new(RemoveFileCommand {
+            name: args[0].to_owned(),
+        })
+    }
+    fn execute(&self) -> ExitCode {
+        let mut fs = crate::fs::FILESYSTEM.lock();
+        let mut path = PATH.lock().clone();
+        path.extend(self.name.split("/").map(|s| s.to_owned()));
+
+        if let Some(filesystem) = fs.as_mut() {
+            filesystem.delete_file(&path)
+        } else {
+            ExitCode::NotMountedError
+        }
+    }
+}
+
+/// Command to remove a directory from the disk
+struct RemoveDirCommand {
+    name: String,
+}
+
+impl Command for RemoveDirCommand {
+    fn new(args: &[&str]) -> Box<Self> {
+        Box::new(RemoveDirCommand {
+            name: args[0].to_owned(),
+        })
+    }
+    fn execute(&self) -> ExitCode {
+        let mut fs = crate::fs::FILESYSTEM.lock();
+        let mut path = PATH.lock().clone();
+        path.extend(self.name.split("/").map(|s| s.to_owned()));
+
+        if let Some(filesystem) = fs.as_mut() {
+            filesystem.delete_dir(&path)
         } else {
             ExitCode::NotMountedError
         }

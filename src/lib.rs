@@ -51,6 +51,7 @@ pub enum ExitCode {
     ParseError,
     NotFoundError,
     NotMountedError,
+    NotEmptyError,
     InvalidCommandError,
 }
 
@@ -64,6 +65,7 @@ impl Display for ExitCode {
                 ExitCode::Error => "an unknown error occurred",
                 ExitCode::ParseError => "an error was encountered parsing the command",
                 ExitCode::NotFoundError => "the requested file or directory was not found",
+                ExitCode::NotEmptyError => "the directory is not empty",
                 ExitCode::InvalidCommandError => "command not found",
                 ExitCode::NotMountedError =>
                     "no filesystem is mounted so file operations are unavailable",

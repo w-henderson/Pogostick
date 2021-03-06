@@ -17,7 +17,7 @@ Pogostick is a work-in-progress hobby operating system which runs on the `x86_64
 |✔️ Working | Console with basic commands |
 |✔️ Working | ATA PIO disk driver |
 |✔️ Working | Basic FAT-inspired filesystem ([PFS](doc/filesystem.md)) |
-|🛠️ Planned | "Full" filesystem functionality such as delete, rename etc. |
+|🚧 In Progress | "Full" filesystem functionality such as delete, rename etc. |
 |🛠️ Planned | External (outside of Pogostick) filesystem access with a CLI |
 |🛠️ Planned | Basic text editor similar to `nano` |
 |🛠️ Planned | Executable programs |

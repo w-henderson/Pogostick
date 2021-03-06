@@ -21,11 +21,29 @@ pub struct FileSystem {
 impl FileSystem {
     /// Get a file at the given path from the filesystem, or None if not found
     pub fn get_file(&self, path: &Vec<String>) -> Option<File> {
+        if let Some(table) = self.get_table_with_object(path) {
+            table.get_file(&path[path.len() - 1])
+        } else {
+            None
+        }
+    }
+
+    /// Get a directory at the given path from the filesystem, or None if not found
+    pub fn get_dir(&self, path: &Vec<String>) -> Option<Dir> {
+        if let Some(table) = self.get_table_with_object(path) {
+            table.get_dir(&path[path.len() - 1])
+        } else {
+            None
+        }
+    }
+
+    /// Gets a file table sector containing the given file or directory.
+    fn get_table_with_object(&self, path: &Vec<String>) -> Option<FileTableSector> {
         let mut current_table = self.entry_table.clone();
         let mut current_dir: Option<String> = None;
 
         // Iterate over the objects of the path
-        for obj in path {
+        for (index, obj) in path.iter().enumerate() {
             // Iterate over the tables representing the dir
             while !current_table.contains_object(obj) {
                 if let Some(new_addr) = current_table.continuation_addr {
@@ -39,16 +57,20 @@ impl FileSystem {
                 }
             }
 
-            // If the found object is a directory, else if it is the final file return it
-            if let Some(new_dir) = current_table.get_dir(obj) {
-                current_dir = Some(obj.clone());
-                current_table = FileTableSector::load(
-                    new_dir.entry_addr,
-                    self.drive_index as usize,
-                    current_dir.clone(),
-                );
+            if index != path.len() - 1 {
+                // If the found object is a directory, else if it is the final file return it
+                if let Some(new_dir) = current_table.get_dir(obj) {
+                    current_dir = Some(obj.clone());
+                    current_table = FileTableSector::load(
+                        new_dir.entry_addr,
+                        self.drive_index as usize,
+                        current_dir.clone(),
+                    );
+                } else {
+                    return Some(current_table);
+                }
             } else {
-                return current_table.get_file(obj);
+                return Some(current_table);
             }
         }
 
@@ -263,6 +285,98 @@ impl FileSystem {
 
         Some(result)
     }
+
+    /// Permanently delete a file from the disk.
+    pub fn delete_file(&mut self, path: &Vec<String>) -> ExitCode {
+        if let Some(file) = self.get_file(path) {
+            let drives = ata::DRIVES.lock();
+            let drive = &drives[self.drive_index as usize];
+            let mut current_sector = DataSector::load(file.entry_addr, drive);
+            let mut sectors_to_remove: Vec<DataSector> = Vec::new();
+
+            loop {
+                sectors_to_remove.push(current_sector.clone());
+                if let Some(new_addr) = current_sector.continuation_addr {
+                    current_sector = DataSector::load(new_addr, drive);
+                } else {
+                    break;
+                }
+            }
+
+            for mut sector in sectors_to_remove {
+                sector.remove(drive);
+            }
+
+            drop(drives);
+
+            let mut file_table_sector = self.get_table_with_object(path).unwrap();
+            let remove_index = file_table_sector
+                .files
+                .iter()
+                .position(|ft| match ft {
+                    FileType::File(f) => f.entry_addr == file.entry_addr,
+                    FileType::Dir(_) => false,
+                })
+                .unwrap();
+
+            file_table_sector.files.remove(remove_index);
+            file_table_sector.update_physical_drive();
+
+            self.entry_table =
+                FileTableSector::load(self.entry_sector, self.drive_index as usize, None);
+
+            ExitCode::Success
+        } else {
+            ExitCode::NotFoundError
+        }
+    }
+
+    /// Permanently delete an empty directory from the disk.
+    pub fn delete_dir(&mut self, path: &Vec<String>) -> ExitCode {
+        if let Some(dir) = self.get_dir(path) {
+            let mut current_sector =
+                FileTableSector::load(dir.entry_addr, self.drive_index as usize, None);
+            let mut sectors_to_remove: Vec<FileTableSector> = Vec::new();
+
+            if current_sector.files.len() != 0 {
+                return ExitCode::NotEmptyError;
+            }
+
+            loop {
+                sectors_to_remove.push(current_sector.clone());
+                if let Some(new_addr) = current_sector.continuation_addr {
+                    current_sector =
+                        FileTableSector::load(new_addr, self.drive_index as usize, None);
+                } else {
+                    break;
+                }
+            }
+
+            for mut sector in sectors_to_remove {
+                sector.remove();
+            }
+
+            let mut file_table_sector = self.get_table_with_object(path).unwrap();
+            let remove_index = file_table_sector
+                .files
+                .iter()
+                .position(|ft| match ft {
+                    FileType::Dir(d) => d.entry_addr == dir.entry_addr,
+                    FileType::File(_) => false,
+                })
+                .unwrap();
+
+            file_table_sector.files.remove(remove_index);
+            file_table_sector.update_physical_drive();
+
+            self.entry_table =
+                FileTableSector::load(self.entry_sector, self.drive_index as usize, None);
+
+            ExitCode::Success
+        } else {
+            ExitCode::NotFoundError
+        }
+    }
 }
 
 /// Abstract struct representing a file, not connected in any way to disk
@@ -324,6 +438,7 @@ pub struct FileTableSector {
     pub continuation_addr: Option<u32>,
     pub files: Vec<FileType>,
     pub drive_index: usize,
+    pub is_deleted: bool,
 }
 
 impl FileTableSector {
@@ -390,6 +505,7 @@ impl FileTableSector {
             continuation_addr: continuation_option,
             files,
             drive_index,
+            is_deleted: false,
         }
     }
 
@@ -411,10 +527,19 @@ impl FileTableSector {
             continuation_addr: None,
             files: Vec::new(),
             drive_index,
+            is_deleted: false,
         }
     }
 
-    /// Update the virtual parameters onto the disk
+    /// Remove the sector from the disk.
+    pub fn remove(&mut self) {
+        self.continuation_addr = None;
+        self.files = Vec::new();
+        self.is_deleted = true;
+        self.update_physical_drive();
+    }
+
+    /// Update the virtual parameters onto the disk.
     pub fn update_physical_drive(&self) {
         let drive: &Drive = &ata::DRIVES.lock()[self.drive_index];
         let mut buf = [0_u8; 512];
@@ -460,10 +585,12 @@ impl FileTableSector {
             index += 63;
         }
 
-        buf[508] = b'P';
-        buf[509] = b'O';
-        buf[510] = b'G';
-        buf[511] = b'O';
+        if !self.is_deleted {
+            buf[508] = b'P';
+            buf[509] = b'O';
+            buf[510] = b'G';
+            buf[511] = b'O';
+        }
 
         drive.write(self.addr, &buf);
     }
@@ -538,6 +665,7 @@ impl FileTableSector {
 }
 
 /// Represents a sector of the disk containing data
+#[derive(Clone)]
 pub struct DataSector {
     pub addr: u32,
     pub continuation_addr: Option<u32>,
@@ -590,6 +718,14 @@ impl DataSector {
         return Self::load(addr, drive);
     }
 
+    /// Removes the sector from the disk.
+    pub fn remove(&mut self, drive: &Drive) {
+        self.continuation_addr = None;
+        self.data = [0_u8; 506];
+        self.size = 0;
+        self.update_physical_drive(drive);
+    }
+
     /// Updates the physical disk with the contents of the virtual sector.
     pub fn update_physical_drive(&self, drive: &Drive) {
         let mut buf = [0_u8; 512];
@@ -606,6 +742,9 @@ impl DataSector {
             buf[2] = 0;
             buf[3] = 0;
         }
+
+        buf[4] = self.size.get_bits(8..16) as u8;
+        buf[5] = self.size.get_bits(0..8) as u8;
 
         for index in 6_usize..512 {
             buf[index] = self.data[index - 6];
