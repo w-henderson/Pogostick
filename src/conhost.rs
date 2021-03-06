@@ -1,5 +1,5 @@
 use crate::vga::{err, info, okay, warn, Colour, ColourCode, BUFFER_HEIGHT, WRITER};
-use crate::{input::STDIN, println, time::Time, ExitCode};
+use crate::{input::STDIN, println, time::DateTime, ExitCode};
 use alloc::{
     borrow::ToOwned,
     boxed::Box,
@@ -19,7 +19,7 @@ lazy_static! {
 pub fn console_loop() -> ! {
     info(&format!(
         "boot completed at {}\n\n",
-        Time::get().to_string()
+        DateTime::get().to_string()
     ));
 
     let prompt_colour = ColourCode::new(Colour::LightGreen, Colour::Black);
@@ -59,6 +59,7 @@ pub fn console_loop() -> ! {
             "rm" => RemoveFileCommand::new(&command_split[1..]),
             "rmdir" => RemoveDirCommand::new(&command_split[1..]),
             "time" => TimeCommand::new(&[]),
+            "uptime" => Uptime::new(&[]),
             _ => NullCommand::new(&[]),
         };
 
@@ -98,6 +99,20 @@ impl Command for Echo {
     }
     fn execute(&self) -> ExitCode {
         println!("{}", self.text);
+        ExitCode::Success
+    }
+}
+
+/// Uptime command, prints system uptime to the console
+struct Uptime;
+
+impl Command for Uptime {
+    fn new(_args: &[&str]) -> Box<Self> {
+        Box::new(Uptime)
+    }
+    fn execute(&self) -> ExitCode {
+        let uptime = crate::time::uptime();
+        println!("system uptime: {}", uptime);
         ExitCode::Success
     }
 }
@@ -170,7 +185,7 @@ impl Command for TimeCommand {
         Box::new(TimeCommand)
     }
     fn execute(&self) -> ExitCode {
-        println!("{}", Time::get().to_string());
+        println!("{}", DateTime::get().to_string());
         ExitCode::Success
     }
 }

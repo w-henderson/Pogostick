@@ -1,10 +1,47 @@
 use alloc::vec::Vec;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt::Display, hint::spin_loop};
+use x86_64::instructions::interrupts::without_interrupts;
 use x86_64::instructions::port::Port;
+
+static TICKS: AtomicUsize = AtomicUsize::new(0); // ticks since start
+const PIT_DIVIDER: usize = 1193; // divider for PIT frequency (see OSDev wiki)
+const PIT_INTERVAL: f64 = PIT_DIVIDER as f64 / (3_579_545.0 / 3.0); // interval between PIT ticks
+
+pub fn init() {
+    without_interrupts(|| {
+        let divider_bytes = (PIT_DIVIDER as u16).to_le_bytes();
+        let mut control_port: Port<u8> = Port::new(0x43);
+        let mut data_port: Port<u8> = Port::new(0x40);
+        unsafe {
+            //  00 - channel 0, generates interrupts
+            //  11 - access mode lobyte/hibyte
+            // 011 - square wave generator
+            //   0 - binary mode
+            control_port.write(0b0011_0110);
+            data_port.write(divider_bytes[0]);
+            data_port.write(divider_bytes[1]);
+        }
+    });
+}
+
+/// Get the current system uptime in seconds.
+/// Not necessarily accurate over larger periods of time.
+/// Generally accurate +/- 5% over n seconds.
+/// TODO: make more accurate
+pub fn uptime() -> f64 {
+    PIT_INTERVAL * TICKS.load(Ordering::Relaxed) as f64
+}
+
+pub fn handle_pit_interrupt() {
+    // For some reason it's exactly half the correct speed so add 2 instead of 1
+    // TODO: figure out why
+    TICKS.fetch_add(2, Ordering::Relaxed);
+}
 
 /// Represents a time
 #[allow(dead_code)]
-pub struct Time {
+pub struct DateTime {
     second: u8,
     minute: u8,
     hour: u8,
@@ -14,7 +51,7 @@ pub struct Time {
     year: u8,
 }
 
-impl Time {
+impl DateTime {
     /// Get the current time
     pub fn get() -> Self {
         let mut control_port: Port<u8> = Port::new(0x70);
@@ -47,7 +84,7 @@ impl Time {
             raw_values[2] = ((raw_values[2] & 0x7F) + 12) % 24;
         }
 
-        Time {
+        DateTime {
             second: raw_values[0],
             minute: raw_values[1],
             hour: raw_values[2],
@@ -92,7 +129,7 @@ impl Time {
     }
 }
 
-impl Display for Time {
+impl Display for DateTime {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
@@ -107,6 +144,7 @@ impl Display for Time {
     }
 }
 
+/// Gets number of CPU operations completed
 pub fn rdtsc() -> u64 {
     unsafe {
         core::arch::x86_64::_mm_lfence();
@@ -114,9 +152,12 @@ pub fn rdtsc() -> u64 {
     }
 }
 
+/// Waits for the specified number of nanoseconds.
+/// HIGHLY INACCURATE, DON'T USE!
+/// TODO: FIX
 pub fn wait_nano(nanoseconds: u64) {
     let start = rdtsc();
-    while rdtsc() - start < nanoseconds * 4 {
+    while rdtsc() - start < nanoseconds {
         spin_loop();
     }
 }

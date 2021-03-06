@@ -28,6 +28,8 @@ pub fn init(boot_info: &'static BootInfo) {
     unsafe { interrupts::PICS.lock().initialize() }; // initialise interrupt controller
     x86_64::instructions::interrupts::enable(); // enable interrupts
     okay("initialised interrupt handling\n");
+    time::init();
+    okay("initialised time functions\n");
 
     // Initialise heap allocation
     let physical_memory_offset = VirtAddr::new(boot_info.physical_memory_offset);

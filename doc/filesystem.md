@@ -32,7 +32,7 @@ File sectors hold at least part of a file, as well as a reference to the sector 
 | `0x0006..0x0200` | `[u8; 506]` | any | Part or the entirety of the data for this file. |
 
 # Interacting with PFS within Pogostick
-Pogostick's integration with the PFS is still limited, as is the filesystem itself. You can currently traverse directories with the `cd` command, create text files with `wt`, read text files with `rt`, create directories with `mkdir`, and list directories with `ls` or `dir` at your choosing. There is currently no way of deleting files, although this is being developed.
+Pogostick's integration with the PFS is still limited, as is the filesystem itself. You can currently traverse directories with the `cd` command, create text files with `wt`, read text files with `rt`, create directories with `mkdir`, and list directories with `ls` or `dir` at your choosing. You can remove files with `rm` and directories with `rmdir` as you would expect.
 
 ```
 pogo:$~/ mkdir example_dir

@@ -88,7 +88,7 @@ impl Bus {
     /// Waits for a command to be processed.
     /// This is done by reading the status 16 times, as advised on the OSDev wiki.
     unsafe fn wait(&mut self) {
-        for _ in 0..16 {
+        for _ in 0..4 {
             self.alt_status_reg.read();
         }
     }

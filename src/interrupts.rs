@@ -71,7 +71,7 @@ extern "x86-interrupt" fn double_fault_handler(
 
 /// Timer interrupt handler
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
-    /* TODO */
+    crate::time::handle_pit_interrupt();
 
     unsafe {
         PICS.lock()
