@@ -56,6 +56,7 @@ pub fn console_loop() -> ! {
             "mkdir" => CreateDirCommand::new(&command_split[1..]),
             "wt" => WriteCommand::new(&command_split[1..]),
             "rt" => ReadCommand::new(&command_split[1..]),
+            "rename" => RenameCommand::new(&command_split[1..]),
             "rm" => RemoveFileCommand::new(&command_split[1..]),
             "rmdir" => RemoveDirCommand::new(&command_split[1..]),
             "time" => TimeCommand::new(&[]),
@@ -276,6 +277,32 @@ impl Command for ListFilesCommand {
                 println!(" - {}", file);
             }
             ExitCode::Success
+        } else {
+            ExitCode::NotMountedError
+        }
+    }
+}
+
+/// Command to rename a file or directory
+struct RenameCommand {
+    old_name: String,
+    new_name: String,
+}
+
+impl Command for RenameCommand {
+    fn new(args: &[&str]) -> Box<Self> {
+        Box::new(RenameCommand {
+            old_name: args[0].to_owned(),
+            new_name: args[1].to_owned(),
+        })
+    }
+    fn execute(&self) -> ExitCode {
+        let mut fs = crate::fs::FILESYSTEM.lock();
+        let mut path = PATH.lock().clone();
+        path.extend(self.old_name.split("/").map(|s| s.to_owned()));
+
+        if let Some(filesystem) = fs.as_mut() {
+            filesystem.rename(&path, &self.new_name)
         } else {
             ExitCode::NotMountedError
         }

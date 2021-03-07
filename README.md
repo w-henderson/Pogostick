@@ -1,7 +1,7 @@
 <p align="center">
     <img src="assets/logo.png" width=400><br>
     <img src="https://img.shields.io/badge/language-rust-b07858?style=for-the-badge&logo=rust" style="margin-right:5px">
-    <img src="https://img.shields.io/badge/architecture-x86_64-blue?style=for-the-badge" style="margin-right:5px">
+    <img src="https://img.shields.io/badge/architecture-x86__64-blue?style=for-the-badge" style="margin-right:5px">
 </p>
 
 # Pogostick
@@ -17,7 +17,8 @@ Pogostick is a work-in-progress hobby operating system which runs on the `x86_64
 |✔️ Working | Console with basic commands |
 |✔️ Working | ATA PIO disk driver |
 |✔️ Working | Basic FAT-inspired filesystem ([PFS](doc/filesystem.md)) |
-|🚧 In Progress | "Full" filesystem functionality such as delete, rename etc. |
-|🛠️ Planned | External (outside of Pogostick) filesystem access with a CLI |
+|✔️ Working | "Full" filesystem functionality such as delete, rename etc. |
+|🛠️ Planned | Improved console system with help commands etc. |
 |🛠️ Planned | Basic text editor similar to `nano` |
+|🛠️ Planned | External (outside of Pogostick) filesystem access with a CLI |
 |🛠️ Planned | Executable programs |

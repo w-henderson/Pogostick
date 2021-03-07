@@ -2,7 +2,7 @@ use crate::ata::{self, Drive};
 use crate::input::STDIN;
 use crate::vga::{info, okay, warn};
 use crate::{println, ExitCode};
-use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
+use alloc::{borrow::ToOwned, format, string::String, string::ToString, vec::Vec};
 use bit_field::BitField;
 use lazy_static::lazy_static;
 use spin::Mutex;
@@ -369,6 +369,39 @@ impl FileSystem {
             file_table_sector.files.remove(remove_index);
             file_table_sector.update_physical_drive();
 
+            self.entry_table =
+                FileTableSector::load(self.entry_sector, self.drive_index as usize, None);
+
+            ExitCode::Success
+        } else {
+            ExitCode::NotFoundError
+        }
+    }
+
+    /// Renames a file or directory.
+    pub fn rename(&mut self, path: &Vec<String>, new_name: &str) -> ExitCode {
+        let old_name = path[path.len() - 1].clone();
+        if let Some(mut table) = self.get_table_with_object(path) {
+            // Find the object
+            let object = table
+                .files
+                .iter_mut()
+                .find(|f| match f {
+                    FileType::File(f) => f.name == old_name,
+                    FileType::Dir(d) => d.name == old_name,
+                })
+                .unwrap();
+
+            // Rename the object
+            match object {
+                FileType::File(f) => f.name = new_name.to_string(),
+                FileType::Dir(d) => d.name = new_name.to_string(),
+            }
+
+            // Update physical disk with virtual changes
+            table.update_physical_drive();
+
+            // Update entry sector in case file was stored in it
             self.entry_table =
                 FileTableSector::load(self.entry_sector, self.drive_index as usize, None);
 
