@@ -46,30 +46,40 @@ pub fn console_loop() -> ! {
         lock_write_colour(&path_display, path_colour);
         let command_str = STDIN.get_str();
         let command_split: Vec<&str> = command_str.split(" ").collect();
-        let command: Box<dyn Command> = match command_split[0] {
-            "cd" => CDCommand::new(&command_split[1..]),
-            "echo" => Echo::new(&command_split[1..]),
-            "clear" => ClearCommand::new(&[]),
-            "add" => AddCommand::new(&command_split[1..]),
-            "disk" => DiskInfoCommand::new(&[]),
-            "ls" | "dir" => ListFilesCommand::new(&[]),
-            "mkdir" => CreateDirCommand::new(&command_split[1..]),
-            "wt" => WriteCommand::new(&command_split[1..]),
-            "rt" => ReadCommand::new(&command_split[1..]),
-            "rename" => RenameCommand::new(&command_split[1..]),
-            "rm" => RemoveFileCommand::new(&command_split[1..]),
-            "rmdir" => RemoveDirCommand::new(&command_split[1..]),
-            "time" => TimeCommand::new(&[]),
-            "uptime" => Uptime::new(&[]),
-            _ => NullCommand::new(&[]),
-        };
+        let command = create_command(command_split);
 
         let status_code = command.execute();
         match status_code {
             ExitCode::Success => ExitCode::Success,
-            _ => err(&status_code.to_string()),
+            _ => {
+                err(&status_code.to_string());
+                info("try running `help <command name>` for help\n");
+                ExitCode::Error
+            }
         };
         println!();
+    }
+}
+
+/// Parses a command object by name
+fn create_command(args: Vec<&str>) -> Box<dyn Command> {
+    match args[0] {
+        "cd" => CDCommand::new(&args[1..]),
+        "echo" => Echo::new(&args[1..]),
+        "clear" => ClearCommand::new(&[]),
+        "add" => AddCommand::new(&args[1..]),
+        "disk" => DiskInfoCommand::new(&[]),
+        "ls" | "dir" => ListFilesCommand::new(&[]),
+        "mkdir" => CreateDirCommand::new(&args[1..]),
+        "wt" => WriteCommand::new(&args[1..]),
+        "rt" => ReadCommand::new(&args[1..]),
+        "rename" => RenameCommand::new(&args[1..]),
+        "rm" => RemoveFileCommand::new(&args[1..]),
+        "rmdir" => RemoveDirCommand::new(&args[1..]),
+        "time" => TimeCommand::new(&[]),
+        "uptime" => Uptime::new(&[]),
+        "help" => HelpCommand::new(&args[1..]),
+        _ => NullCommand::new(&[]),
     }
 }
 
@@ -80,8 +90,10 @@ trait Command {
         Self: Sized;
 
     /// Execute command, returning status code.
-    /// Status codes are 0 for success, 1 for generic error, 2 for filesystem error, and 255 for command not found.
     fn execute(&self) -> ExitCode;
+
+    /// Return usage instructions for the command.
+    fn usage(&self) -> &str;
 }
 
 /// Basic echo command, prints its input to the output
@@ -102,6 +114,12 @@ impl Command for Echo {
         println!("{}", self.text);
         ExitCode::Success
     }
+    fn usage(&self) -> &str {
+        "help:            echos text to the console
+         usage:           echo <text to echo>
+         example command: echo hello world
+         example output:  hello world"
+    }
 }
 
 /// Uptime command, prints system uptime to the console
@@ -113,8 +131,14 @@ impl Command for Uptime {
     }
     fn execute(&self) -> ExitCode {
         let uptime = crate::time::uptime();
-        println!("system uptime: {}", uptime);
+        println!("system uptime: {}s", uptime);
         ExitCode::Success
+    }
+    fn usage(&self) -> &str {
+        "help:            prints system uptime in seconds
+         usage:           uptime
+         example command: uptime
+         example output:  100s"
     }
 }
 
@@ -159,6 +183,13 @@ impl Command for CDCommand {
             ExitCode::NotMountedError
         }
     }
+
+    fn usage(&self) -> &str {
+        "help:            changes directory to the given directory
+         usage:           cd <new dir path or .. for up one>
+         example command: cd /
+         example output:  N/A"
+    }
 }
 
 /// Command to clear the screen
@@ -176,6 +207,12 @@ impl Command for ClearCommand {
         });
         ExitCode::Success
     }
+    fn usage(&self) -> &str {
+        "help:            clears the screen
+         usage:           clear
+         example command: clear
+         example output:  N/A"
+    }
 }
 
 /// Command to get the current time
@@ -188,6 +225,12 @@ impl Command for TimeCommand {
     fn execute(&self) -> ExitCode {
         println!("{}", DateTime::get().to_string());
         ExitCode::Success
+    }
+    fn usage(&self) -> &str {
+        "help:            gets the current time
+         usage:           time
+         example command: time
+         example output:  13:50, Sunday 7 March 2021"
     }
 }
 
@@ -232,6 +275,12 @@ impl Command for AddCommand {
             ExitCode::ParseError
         }
     }
+    fn usage(&self) -> &str {
+        "help:            adds two numbers
+         usage:           add <first number> <second number>
+         example command: add 7 8
+         example output:  15"
+    }
 }
 
 /// Command to list connected disks
@@ -254,6 +303,12 @@ impl Command for DiskInfoCommand {
             ));
         }
         ExitCode::Success
+    }
+    fn usage(&self) -> &str {
+        "help:            prints info about connected disks
+         usage:           disk
+         example command: disk
+         example output:  ATA 0: 0 MODEL 12345678 (32 MB)"
     }
 }
 
@@ -281,6 +336,12 @@ impl Command for ListFilesCommand {
             ExitCode::NotMountedError
         }
     }
+    fn usage(&self) -> &str {
+        "help:            lists the files in the current directory
+         usage:           ls|dir
+         example command: ls
+         example output:  no files in this directory"
+    }
 }
 
 /// Command to rename a file or directory
@@ -307,6 +368,12 @@ impl Command for RenameCommand {
             ExitCode::NotMountedError
         }
     }
+    fn usage(&self) -> &str {
+        "help:            renames a file at the given path
+         usage:           rename <path> <new name>
+         example command: rename documrnt document
+         example output:  N/A"
+    }
 }
 
 /// Command to remove a file from the disk
@@ -331,6 +398,12 @@ impl Command for RemoveFileCommand {
             ExitCode::NotMountedError
         }
     }
+    fn usage(&self) -> &str {
+        "help:            removes a file from the disk
+         usage:           remove <path>
+         example command: remove document
+         example output:  N/A"
+    }
 }
 
 /// Command to remove a directory from the disk
@@ -354,6 +427,12 @@ impl Command for RemoveDirCommand {
         } else {
             ExitCode::NotMountedError
         }
+    }
+    fn usage(&self) -> &str {
+        "help:            removes a directory from the disk
+         usage:           remove <path>
+         example command: remove documents
+         example output:  N/A"
     }
 }
 
@@ -382,6 +461,12 @@ impl Command for WriteCommand {
         } else {
             ExitCode::NotMountedError
         }
+    }
+    fn usage(&self) -> &str {
+        "help:            writes text to a file
+         usage:           wt <path> <text>
+         example command: wt document hello world
+         example output:  N/A"
     }
 }
 
@@ -420,6 +505,12 @@ impl Command for ReadCommand {
             ExitCode::NotMountedError
         }
     }
+    fn usage(&self) -> &str {
+        "help:            prints text from a UTF-8 file
+         usage:           rt <path>
+         example command: rt document
+         example output:  hello world"
+    }
 }
 
 /// Create directory command
@@ -444,6 +535,44 @@ impl Command for CreateDirCommand {
             ExitCode::NotMountedError
         }
     }
+    fn usage(&self) -> &str {
+        "help:            creates a directory at the given path
+         usage:           mkdir <path>
+         example command: mkdir documents
+         example output:  N/A"
+    }
+}
+
+/// Shows help for the given command
+struct HelpCommand {
+    command: String,
+}
+
+impl Command for HelpCommand {
+    fn new(args: &[&str]) -> Box<Self> {
+        Box::new(HelpCommand {
+            command: args[0].to_owned(),
+        })
+    }
+    fn execute(&self) -> ExitCode {
+        let command = create_command([self.command.as_str(), "1", "2", "3"].to_vec());
+        println!(
+            "{}",
+            command
+                .usage()
+                .split("\n")
+                .map(|l| l.trim())
+                .collect::<Vec<&str>>()
+                .join("\n")
+        );
+        ExitCode::Success
+    }
+    fn usage(&self) -> &str {
+        "help:            shows help text for a given command
+         usage:           help <command>
+         example command: help help
+         example output:  you're reading it"
+    }
 }
 
 /// Null command, represents a non-existant command
@@ -455,5 +584,8 @@ impl Command for NullCommand {
     }
     fn execute(&self) -> ExitCode {
         ExitCode::InvalidCommandError
+    }
+    fn usage(&self) -> &str {
+        ""
     }
 }
