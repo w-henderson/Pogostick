@@ -1,6 +1,5 @@
 #![no_std]
 #![feature(abi_x86_interrupt)]
-#![feature(assoc_char_funcs)]
 #![feature(alloc_error_handler)]
 
 pub mod allocator; // heap allocation

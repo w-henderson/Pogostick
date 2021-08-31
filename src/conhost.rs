@@ -494,8 +494,10 @@ impl Command for ReadCommand {
                 if let Ok(file_text) = core::str::from_utf8(&file_bytes) {
                     println!("{}", file_text)
                 } else {
+                    let mut bytes: Vec<u8> = Vec::with_capacity(file_bytes.len() * 2);
+                    hex::encode_to_slice(file_bytes, &mut bytes).unwrap();
                     warn("cannot detect encoding, printing as hex\n\n");
-                    println!("{}", hex::encode(file_bytes));
+                    println!("{}", core::str::from_utf8(&bytes).unwrap());
                 }
                 ExitCode::Success
             } else {

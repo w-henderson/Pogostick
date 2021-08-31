@@ -4,6 +4,7 @@
 // This means that we won't get stuck in a boot loop if an exception occurs and we can't handle it because we're out of memory.
 
 use lazy_static::lazy_static;
+use x86_64::instructions::segmentation::Segment;
 use x86_64::structures::gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector};
 use x86_64::structures::tss::TaskStateSegment;
 use x86_64::VirtAddr;
@@ -53,12 +54,12 @@ pub fn init() {
 
     GDT.0.load();
     unsafe {
-        segmentation::set_cs(GDT.1.code_selector);
-        segmentation::load_ds(GDT.1.data_selector);
-        segmentation::load_es(GDT.1.data_selector);
-        segmentation::load_fs(GDT.1.data_selector);
-        segmentation::load_gs(GDT.1.data_selector);
-        segmentation::load_ss(GDT.1.data_selector);
+        segmentation::CS::set_reg(GDT.1.code_selector);
+        segmentation::DS::set_reg(GDT.1.data_selector);
+        segmentation::ES::set_reg(GDT.1.data_selector);
+        segmentation::FS::set_reg(GDT.1.data_selector);
+        segmentation::GS::set_reg(GDT.1.data_selector);
+        segmentation::SS::set_reg(GDT.1.data_selector);
         tables::load_tss(GDT.1.tss_selector);
     }
 }

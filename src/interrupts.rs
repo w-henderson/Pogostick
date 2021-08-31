@@ -3,7 +3,7 @@
 
 use crate::{gdt, println};
 use lazy_static::lazy_static;
-use pic8259_simple::ChainedPics;
+use pic8259::ChainedPics;
 use spin;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
@@ -54,13 +54,13 @@ pub fn init_idt() {
 }
 
 /// Breakpoint exception handler
-extern "x86-interrupt" fn breakpoint_handler(stack_frame: &mut InterruptStackFrame) {
+extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
     println!("EXCEPTION: BREAKPOINT\n{:#?}", stack_frame);
 }
 
 /// Double exception handler, basically a crash but not quite
 extern "x86-interrupt" fn double_fault_handler(
-    stack_frame: &mut InterruptStackFrame,
+    stack_frame: InterruptStackFrame,
     error_code: u64,
 ) -> ! {
     panic!(
@@ -70,7 +70,7 @@ extern "x86-interrupt" fn double_fault_handler(
 }
 
 /// Timer interrupt handler
-extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
+extern "x86-interrupt" fn timer_interrupt_handler(_: InterruptStackFrame) {
     crate::time::handle_pit_interrupt();
 
     unsafe {

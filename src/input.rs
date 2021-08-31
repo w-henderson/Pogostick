@@ -85,7 +85,7 @@ lazy_static! {
 }
 
 /// Keyboard interrupt handler, manages keyboard input
-pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: &mut InterruptStackFrame) {
+pub extern "x86-interrupt" fn keyboard_interrupt_handler(_: InterruptStackFrame) {
     lazy_static! {
         static ref KEYBOARD: Mutex<Keyboard<layouts::Uk105Key, ScancodeSet1>> = Mutex::new(
             Keyboard::new(layouts::Uk105Key, ScancodeSet1, HandleControl::Ignore)
